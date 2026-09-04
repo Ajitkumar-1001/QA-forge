@@ -25,6 +25,7 @@ Nothing.
 
 ## Next
 - Record the architecture and any real technology decisions from [[PRD]] as ADRs.
+- Run the [[Speckit-Gstack-Workflow]] sequence, starting with `specify init` and `/office-hours`, to turn [[PRD]] into an approved spec/plan before implementation.
 
 ## Blockers
 - No deployment target — `Needs Decision`.
