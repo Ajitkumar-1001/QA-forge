@@ -1,4 +1,4 @@
-<div align="center"> QAForge </div>
+<div align="center"> <h1>QAForge </h1></div>
 
 <p align="center">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
