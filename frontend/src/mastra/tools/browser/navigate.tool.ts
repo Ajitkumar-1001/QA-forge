@@ -46,6 +46,17 @@ export async function isUrlAllowed(rawUrl: string): Promise<boolean> {
   return isAddressAllowed(url.hostname);
 }
 
+/** T062, 2026-09-04 /speckit-converge (SEC-001, HIGH): lets a caller distinguish a Layer B denial
+ * (a redirect hop, or any mid-scenario navigation an action triggered) from an ordinary step
+ * failure — previously the underlying `page.goto()`/action call just threw whatever generic
+ * Playwright network error `Fetch.failRequest` produces, indistinguishable from a real
+ * application bug and never mapped to `APP_UNREACHABLE`. */
+export interface NavigationGuard {
+  /** The most recently denied URL, if any — read and cleared in one step so a later, unrelated
+   * failure doesn't get misattributed to a stale denial. */
+  consumeBlockedUrl(): string | null;
+}
+
 /**
  * SSRF Layer B (research.md §4): per-hop enforcement via CDP `Fetch.requestPaused` — NOT
  * `page.route()`, which is empirically proven not to fire on redirect hops on a main-frame
@@ -55,7 +66,8 @@ export async function isUrlAllowed(rawUrl: string): Promise<boolean> {
  * call this tool makes — a step that triggers navigation via `actions.tool.ts`'s `click`/`submit`
  * is covered too.
  */
-export async function installNavigationGuard(context: BrowserContext): Promise<void> {
+export async function installNavigationGuard(context: BrowserContext): Promise<NavigationGuard> {
+  let blockedUrl: string | null = null;
   const guardPage = async (page: Page) => {
     const session = await context.newCDPSession(page);
     await session.send("Fetch.enable", {
@@ -66,6 +78,7 @@ export async function installNavigationGuard(context: BrowserContext): Promise<v
       if (allowed) {
         await session.send("Fetch.continueRequest", { requestId: event.requestId });
       } else {
+        blockedUrl = event.request.url;
         await session.send("Fetch.failRequest", {
           requestId: event.requestId,
           errorReason: "BlockedByClient",
@@ -82,6 +95,13 @@ export async function installNavigationGuard(context: BrowserContext): Promise<v
   for (const page of context.pages()) {
     await guardPage(page);
   }
+  return {
+    consumeBlockedUrl: () => {
+      const url = blockedUrl;
+      blockedUrl = null;
+      return url;
+    },
+  };
 }
 
 /** Walks `redirectedFrom()` backward from the final response to build the full redirect chain

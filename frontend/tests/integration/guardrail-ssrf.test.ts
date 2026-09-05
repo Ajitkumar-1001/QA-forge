@@ -54,6 +54,7 @@ describe("SSRF deny-list guardrail (SEC-001, SC-004)", () => {
             failureCriteria: { kind: "url", match: "impossible" },
           },
         ],
+        runId: "test-run-ssrf-metadata",
       }),
     ).rejects.toMatchObject({
       name: "SsrfDeniedError",
@@ -68,6 +69,7 @@ describe("SSRF deny-list guardrail (SEC-001, SC-004)", () => {
         applicationUrl: "http://127.0.0.1:1/",
         repoUrl: "https://example.com/owner/repo.git",
         steps: [],
+        runId: "test-run-ssrf-loopback",
       }),
     ).rejects.toMatchObject({ name: "SsrfDeniedError" });
   }, 15000);

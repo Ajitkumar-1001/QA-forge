@@ -66,4 +66,32 @@ describe("evaluateHypothesis — real evidence-id resolution (T050, FR-010, Cons
 
     expect(result.status).toBe("REJECTED");
   });
+
+  it("never reaches a terminal verdict from an all-semantic check set, however it comes out (T053, Constitution I)", () => {
+    const evidenceById = new Map(EVIDENCE.map((e) => [e.id, e]));
+
+    const passingSemanticOnly: ValidationCheck[] = [
+      { kind: "semantic", evidenceId: "evidence-1", assertion: "the redirect confirms this", passed: true },
+    ];
+    const failingSemanticOnly: ValidationCheck[] = [
+      { kind: "semantic", evidenceId: "evidence-1", assertion: "the redirect confirms this", passed: false },
+    ];
+
+    // Neither an all-passing nor an all-failing semantic-only check set may decide SUPPORTED or
+    // REJECTED — code has contributed nothing but a trivial AND over the model's own self-report,
+    // which Constitution I doesn't accept as "deterministic code evaluating structured evidence."
+    expect(evaluateHypothesis(CANDIDATE, passingSemanticOnly, evidenceById).status).toBe("VALIDATING");
+    expect(evaluateHypothesis(CANDIDATE, failingSemanticOnly, evidenceById).status).toBe("VALIDATING");
+  });
+
+  it("persists the code-computed per-check outcome, not only the originally-proposed check (T059)", () => {
+    const evidenceById = new Map(EVIDENCE.map((e) => [e.id, e]));
+    const checks: ValidationCheck[] = [
+      { kind: "structured", evidenceId: "evidence-1", criterion: { kind: "url", match: "/nonexistent-path" } },
+    ];
+
+    const result = evaluateHypothesis(CANDIDATE, checks, evidenceById);
+
+    expect(result.checks).toEqual([{ check: checks[0], passed: false }]);
+  });
 });

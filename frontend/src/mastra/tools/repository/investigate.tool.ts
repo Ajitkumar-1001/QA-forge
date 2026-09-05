@@ -32,7 +32,10 @@ const TEXT_FILE_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rb", ".go", ".java",
   ".rs", ".php", ".json", ".md", ".yml", ".yaml", ".html", ".css",
 ]);
-/** Named but not tuned (spec.md Assumptions — resource bounds beyond step count, deferred). */
+/** Named but not tuned (spec.md Assumptions — resource bounds beyond step count, deferred).
+ * Also NFR-001's "investigation depth" bound (T071, 2026-09-05 /speckit-converge): a deliberate
+ * match-count substitute for a directory-hop cap, documented in spec.md's Assumptions section —
+ * does not bound directories visited before this cap engages, only matches collected. */
 const MAX_FILES_SCANNED = 500;
 
 /**

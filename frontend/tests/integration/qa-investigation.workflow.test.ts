@@ -38,16 +38,28 @@ vi.mock("@/mastra/agents/validator.agent", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/mastra/agents/validator.agent")>();
   return {
     ...actual,
-    // Semantic checks (not structured) so this doesn't need to match a real Evidence.id — only
-    // `evaluateHypothesis` (kept real, from `actual`) decides SUPPORTED/REJECTED from these.
-    proposeChecks: vi.fn(async (candidate: { confidence: number; description: string }) => [
-      {
-        kind: "semantic" as const,
-        evidenceId: "e1",
-        assertion: candidate.description,
-        passed: candidate.confidence > 0.5,
+    // Structured checks against a REAL, real-id-cited piece of evidence (T050/T053, 2026-09-04
+    // /speckit-converge) — `evaluateHypothesis` (kept real, from `actual`) now requires at least
+    // one structured check to reach a terminal verdict, so an all-semantic mock (this file's
+    // previous approach) can no longer resolve SUPPORTED/REJECTED at all. T056's evidence.tool.ts
+    // fix guarantees an HTTP-type "currentUrl" evidence entry always exists, containing the real
+    // page URL — used here as the guaranteed-present, guaranteed-matchable evidence item.
+    proposeChecks: vi.fn(
+      async (
+        candidate: { confidence: number; description: string },
+        evidence: { id?: string; content: string }[],
+      ) => {
+        const urlEvidence = evidence.find((e) => e.content.includes("example.com"));
+        const matchTerm = candidate.confidence > 0.5 ? "example.com" : "this-will-never-match-anything";
+        return [
+          {
+            kind: "structured" as const,
+            evidenceId: urlEvidence?.id ?? "missing-evidence-id",
+            criterion: { kind: "url" as const, match: matchTerm },
+          },
+        ];
       },
-    ]),
+    ),
   };
 });
 
@@ -88,6 +100,7 @@ describe("qa-investigation workflow — FAIL sub-test (SUPPORTED verdict reached
       repoUrl: "https://example.com/owner/repo.git",
       steps: [FAILING_STEP],
       maxIterations: 3,
+      runId: "test-run-fail",
     });
   }, 30000);
 
@@ -120,14 +133,18 @@ describe("qa-investigation workflow — INCONCLUSIVE sub-test (loop budget exhau
       { description: "Hypothesis A — never confirmed.", confidence: 0.4, evidenceLinks: [] },
       { description: "Hypothesis B — also never confirmed.", confidence: 0.5, evidenceLinks: [] },
     ]);
-    vi.mocked(proposeChecks).mockImplementation(async (candidate) => [
-      {
-        kind: "semantic" as const,
-        evidenceId: "e1",
-        assertion: candidate.description,
-        passed: false,
-      },
-    ]);
+    vi.mocked(proposeChecks).mockImplementation(async (_candidate, evidence) => {
+      const urlEvidence = (evidence as { id?: string; content: string }[]).find((e) =>
+        e.content.includes("example.com"),
+      );
+      return [
+        {
+          kind: "structured" as const,
+          evidenceId: urlEvidence?.id ?? "missing-evidence-id",
+          criterion: { kind: "url" as const, match: "this-will-never-match-anything" },
+        },
+      ];
+    });
 
     report = await runQaInvestigation({
       objective: "Verify the dashboard loads",
@@ -135,6 +152,7 @@ describe("qa-investigation workflow — INCONCLUSIVE sub-test (loop budget exhau
       repoUrl: "https://example.com/owner/repo.git",
       steps: [FAILING_STEP],
       maxIterations: 2,
+      runId: "test-run-inconclusive",
     });
   }, 30000);
 
@@ -171,6 +189,7 @@ describe("qa-investigation workflow — PASS sub-test (every step succeeds → i
         },
       ],
       maxIterations: 3,
+      runId: "test-run-pass",
     });
   }, 30000);
 

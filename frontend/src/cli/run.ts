@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
-import { generateTestPlan, isPlanWellFormed } from "../mastra/agents/test-planner.agent";
+import {
+  generateTestPlan,
+  isPlanWellFormed,
+  checkStepCountLimit,
+} from "../mastra/agents/test-planner.agent";
 import { runQaInvestigation } from "../mastra/workflows/qa-investigation.workflow";
 import { logEvent } from "../mastra/observability";
 import type { Report } from "../mastra/types";
@@ -12,26 +16,6 @@ import type { Report } from "../mastra/types";
  */
 
 type OutputFormat = "text" | "json";
-
-/**
- * NFR-001's "total steps" bound — previously entirely unenforced (T060, 2026-09-04
- * /speckit-converge): the test-plan schema allowed unlimited steps, and nothing capped the
- * execution loop. A Recommendation-tier default (PRD §20 states its execution limits as examples,
- * not yet load-tested numbers) — the behavior (a bound exists) is the requirement, not this exact
- * number. Distinct from `--max-steps` below, which actually bounds the investigation loop's own
- * round-trips ("max agent loops"), not the count of planned scenario steps — a documentation
- * mismatch corrected in contracts/cli-contract.md alongside this fix.
- */
-const MAX_PLANNED_STEPS = 40;
-
-export function checkStepCountLimit(stepCount: number): void {
-  if (stepCount > MAX_PLANNED_STEPS) {
-    throw Object.assign(
-      new Error(`Test plan has ${stepCount} steps, exceeding the ${MAX_PLANNED_STEPS}-step limit`),
-      { reason: "LIMIT_EXCEEDED" as const },
-    );
-  }
-}
 
 function detectFormat(argv: string[]): OutputFormat {
   const index = argv.indexOf("--format");
@@ -101,7 +85,16 @@ function formatReportText(objective: string, report: Report): string {
     const winning = report.hypotheses.find((h) => h.id === report.winningHypothesisId);
     lines.push("", `ROOT CAUSE (confidence ${report.confidence?.toFixed(2)})`, winning?.description ?? "");
   } else if (report.result === "INCONCLUSIVE") {
-    lines.push("", "NO CONFIRMED ROOT CAUSE — every hypothesis was ruled out:");
+    // T070, 2026-09-04 /speckit-converge (FR-011, contradicts): a VALIDATING hypothesis (checks
+    // passed, confidence never cleared the bar) was never actually rejected by any check — the
+    // old blanket heading misstated it as "ruled out" the same as a genuinely REJECTED one.
+    const allRejected = report.hypotheses.every((h) => h.status === "REJECTED");
+    lines.push(
+      "",
+      allRejected
+        ? "NO CONFIRMED ROOT CAUSE — every hypothesis was ruled out:"
+        : "NO CONFIRMED ROOT CAUSE — no hypothesis was confirmed (some ruled out, some left unresolved):",
+    );
     for (const hypothesis of report.hypotheses) {
       lines.push(`  [${hypothesis.status}] ${hypothesis.description}`);
     }

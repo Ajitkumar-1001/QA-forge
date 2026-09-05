@@ -3,7 +3,10 @@ import { createTool } from "@mastra/core/tools";
 import type { Page } from "playwright";
 import type { Evidence, EvidenceType } from "../../types";
 
-const CREDENTIAL_LIKE_KEY = /pass(word)?|token|secret|api[-_]?key|auth|credential/i;
+// Exported for actions.tool.ts's T065 fix (2026-09-04 /speckit-converge) — the same keyword
+// pattern used to decide what to redact is reused there to decide what to substitute the real
+// credential value into, so both concerns share one canonical definition.
+export const CREDENTIAL_LIKE_KEY = /pass(word)?|token|secret|api[-_]?key|auth|credential/i;
 const CREDENTIAL_HEADER_NAMES = new Set(["authorization", "cookie", "set-cookie"]);
 const REDACTED = "[REDACTED]";
 
@@ -243,11 +246,15 @@ export function createEvidenceTool(
         metadata: {},
       });
       if (options.redirectChain?.length) {
+        // T063, 2026-09-04 /speckit-converge (SEC-002): every other evidence path in this file
+        // redacts before pushing — this one didn't, despite a redirect chain being a list of URLs
+        // that can carry the literal credential value (e.g. a query-string token).
+        const redactedChain = options.redirectChain.map((url) => redactValue(url, options.credentialValue));
         evidence.push({
           id: crypto.randomUUID(),
           stepId,
           type: "HTTP",
-          content: JSON.stringify({ redirectChain: options.redirectChain }),
+          content: JSON.stringify({ redirectChain: redactedChain }),
           metadata: {},
         });
       }

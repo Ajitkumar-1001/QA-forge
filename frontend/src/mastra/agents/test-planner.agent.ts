@@ -41,3 +41,22 @@ export function isPlanWellFormed(plan: TestPlan): plan is Extract<TestPlan, { pl
     plan.steps.every((step) => step.action.trim().length > 0 && step.expectedOutcome.trim().length > 0)
   );
 }
+
+/**
+ * NFR-001's "total steps" bound — previously entirely unenforced (T060, 2026-09-04
+ * /speckit-converge): the test-plan schema allowed unlimited steps, and nothing capped the
+ * execution loop. A Recommendation-tier default (PRD §20 states its execution limits as examples,
+ * not yet load-tested numbers) — the behavior (a bound exists) is the requirement, not this exact
+ * number. Distinct from `--max-steps` (contracts/cli-contract.md), which bounds the investigation
+ * loop's own round-trips ("max agent loops"), not the count of planned scenario steps.
+ */
+export const MAX_PLANNED_STEPS = 40;
+
+export function checkStepCountLimit(stepCount: number): void {
+  if (stepCount > MAX_PLANNED_STEPS) {
+    throw Object.assign(
+      new Error(`Test plan has ${stepCount} steps, exceeding the ${MAX_PLANNED_STEPS}-step limit`),
+      { reason: "LIMIT_EXCEEDED" as const },
+    );
+  }
+}

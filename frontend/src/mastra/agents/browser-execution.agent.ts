@@ -3,6 +3,7 @@ import type { Page } from "playwright";
 import { browserExecutionModel } from "../llm";
 import { createActionTools } from "../tools/browser/actions.tool";
 import { toPromptContext } from "../prompt-context";
+import { redactValue } from "../tools/browser/evidence.tool";
 
 /** "Max browser steps"/"max retries per step" (PRD §20) — a distinct axis from the
  * investigation loop's "max agent loops" (NFR-001, research.md §2). */
@@ -20,8 +21,12 @@ export async function executeStepAction(
   page: Page,
   originUrl: string,
   actionText: string,
+  // T065, 2026-09-04 /speckit-converge (FR-001): previously the supplied credential was threaded
+  // only into evidence redaction, never into the browser-execution path — a login-style objective
+  // had no mechanism to actually use it, since the fill tool's value was entirely LLM-supplied.
+  credentialValue?: string,
 ): Promise<void> {
-  const tools = createActionTools(page, originUrl);
+  const tools = createActionTools(page, originUrl, credentialValue);
   const agent = new Agent({
     id: "browser-execution",
     name: "Browser Execution",
@@ -36,7 +41,11 @@ export async function executeStepAction(
     tools,
   });
 
-  const snapshot = await page.locator("body").ariaSnapshot();
+  const rawSnapshot = await page.locator("body").ariaSnapshot();
+  // T069, 2026-09-04 /speckit-converge (FR-006): the only capture-to-prompt path in the codebase
+  // with no redaction pass — a field an earlier step already filled (or an error message echoing
+  // input) could otherwise put the credential value directly into this prompt.
+  const snapshot = redactValue(rawSnapshot, credentialValue);
   // T051, 2026-09-04 /speckit-converge (CRITICAL): this snapshot is captured application content
   // (Constitution II) — it must go through the same untrusted-data wrapper every other prompt in
   // this codebase uses, not a raw string interpolation. This is the one agent wired with

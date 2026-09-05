@@ -1,9 +1,14 @@
 import { z } from "zod";
 import { createStep, createWorkflow } from "@mastra/core/workflows";
 import { chromium, type Page } from "playwright";
-import { createNavigateTool, installNavigationGuard } from "../tools/browser/navigate.tool";
+import {
+  createNavigateTool,
+  installNavigationGuard,
+  getRedirectChain,
+  SsrfDeniedError,
+} from "../tools/browser/navigate.tool";
 import { startSsrfProxy, toLaunchProxyOption } from "../tools/browser/ssrf-proxy";
-import { createEvidenceRecorder, createEvidenceTool } from "../tools/browser/evidence.tool";
+import { createEvidenceRecorder, createEvidenceTool, redactValue } from "../tools/browser/evidence.tool";
 import { executeStepAction } from "../agents/browser-execution.agent";
 import {
   createInvestigationRoundDeps,
@@ -188,16 +193,25 @@ export async function runQaInvestigation(input: QaInvestigationInput): Promise<R
 
   try {
     const context = await browser.newContext();
-    await installNavigationGuard(context);
+    const navGuard = await installNavigationGuard(context);
     const page = await context.newPage();
     const recorder = createEvidenceRecorder(page, input.credentialValue);
 
+    // T066/T068, 2026-09-04 /speckit-converge (FR-004, FR-005): previously `lastStatus`/the
+    // redirect chain were captured once from the initial navigation and reused for every
+    // subsequent step, even though a step's own action (a click/submit) can navigate the page
+    // further. Tracking the most recent main-frame response keeps both live for the whole run.
+    let lastStatus: number | null = null;
+    let lastRedirectChain: string[] = [];
+    page.on("response", (response) => {
+      if (response.request().frame() === page.mainFrame()) {
+        lastStatus = response.status();
+        lastRedirectChain = getRedirectChain(response);
+      }
+    });
+
     const navigateTool = createNavigateTool(page);
-    const initialNav = (await navigateTool.execute!(
-      { url: input.applicationUrl },
-      {} as never,
-    )) as { status: number | null; redirectChain: string[] };
-    const lastStatus = initialNav.status;
+    await navigateTool.execute!({ url: input.applicationUrl }, {} as never);
 
     for (const plannedStep of input.steps) {
       let observed: string | null = null;
@@ -210,24 +224,43 @@ export async function runQaInvestigation(input: QaInvestigationInput): Promise<R
       });
 
       try {
-        await executeStepAction(page, input.applicationUrl, plannedStep.action);
+        await executeStepAction(page, input.applicationUrl, plannedStep.action, input.credentialValue);
         // T054, 2026-09-04 /speckit-converge (FR-004, contradicts): the prior local
         // `consoleMessages` array was declared but never populated by anything, so a
         // `consoleAbsent` criterion was vacuously always true. `recorder` is the actual source of
         // truth for captured console output.
-        const succeeded = await checkCriterion(
-          plannedStep.successCriteria,
-          page,
-          recorder.getConsoleMessages().map((message) => message.text),
-          lastStatus,
-        );
+        const consoleMessages = recorder.getConsoleMessages().map((message) => message.text);
+        const succeeded = await checkCriterion(plannedStep.successCriteria, page, consoleMessages, lastStatus);
+        // T067, 2026-09-04 /speckit-converge (US1/AC1, AC2): failureCriteria was stored on the
+        // Step record but never evaluated — status was inferred purely from successCriteria's
+        // negation. Genuinely evaluating it doesn't add a third status (StepStatus has none), but
+        // it does let `observed` distinguish a confirmed failure from a merely ambiguous one.
+        const failureConfirmed =
+          !succeeded && (await checkCriterion(plannedStep.failureCriteria, page, consoleMessages, lastStatus));
         status = succeeded ? "PASSED" : "FAILED";
-        observed = page.url();
+        // T064, 2026-09-04 /speckit-converge (Constitution IV): Step.observed previously had no
+        // redaction pass at all before landing in the Report printed to stdout.
+        observed = redactValue(
+          succeeded
+            ? page.url()
+            : failureConfirmed
+              ? `${page.url()} (failureCriteria confirmed)`
+              : `${page.url()} (successCriteria unmet, failureCriteria also unmet — ambiguous)`,
+          input.credentialValue,
+        );
       } catch (error) {
         status = "FAILED";
+        // T062, 2026-09-04 /speckit-converge (SEC-001): a Layer B denial on a redirect hop or a
+        // mid-scenario action-triggered navigation previously surfaced as an ordinary step
+        // failure (feeding the LLM investigation loop) or an unclassified error — never the
+        // explicit denied-error outcome SEC-001 requires for every navigation, not only the first.
+        const blockedUrl = navGuard.consumeBlockedUrl();
+        if (blockedUrl) {
+          throw new SsrfDeniedError(blockedUrl);
+        }
         // T056, 2026-09-04 /speckit-converge (FR-005): previously only the error message, never
         // the current URL, on this branch.
-        observed = `${(error as Error).message} (at ${page.url()})`;
+        observed = redactValue(`${(error as Error).message} (at ${page.url()})`, input.credentialValue);
       }
 
       logEvent({ type: "step_end", runId: input.runId, position: plannedStep.position, status });
@@ -245,7 +278,7 @@ export async function runQaInvestigation(input: QaInvestigationInput): Promise<R
         allPassed = false;
         const evidenceTool = createEvidenceTool(page, recorder, {
           credentialValue: input.credentialValue,
-          redirectChain: initialNav.redirectChain,
+          redirectChain: lastRedirectChain,
         });
         const collected = (await evidenceTool.execute!(
           { stepId: String(plannedStep.position) },

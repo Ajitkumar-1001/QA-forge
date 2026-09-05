@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTool } from "@mastra/core/tools";
 import type { Page } from "playwright";
+import { CREDENTIAL_LIKE_KEY } from "./evidence.tool";
 
 /** Every ARIA role `page.getByRole()` accepts (playwright-core@1.62.1's own type union). */
 const ariaRoleSchema = z.enum([
@@ -41,8 +42,13 @@ function assertSameOrigin(page: Page, originUrl: string): void {
  * has drifted from the run's original `--url` — closes the cross-origin-redirect
  * credential-phishing gap a mid-scenario redirect could otherwise open (2026-09-04 review finding).
  * `click`/`wait` carry no such guard — they don't touch credential-bearing input.
+ *
+ * `credentialValue` (T065, 2026-09-04 /speckit-converge, FR-001) — when supplied and the fill
+ * target's accessible name looks credential-like, `fill` uses this real value instead of the
+ * model's own proposed one. Without this, the supplied `QAFORGE_CREDENTIAL` had no path into the
+ * actual browser session at all — a login-style objective could never really authenticate.
  */
-export function createActionTools(page: Page, originUrl: string) {
+export function createActionTools(page: Page, originUrl: string, credentialValue?: string) {
   const click = createTool({
     id: "click",
     description: "Click an element identified by its accessibility role and accessible name.",
@@ -59,7 +65,9 @@ export function createActionTools(page: Page, originUrl: string) {
     inputSchema: roleTargetSchema.extend({ value: z.string() }),
     execute: async ({ role, name, value }) => {
       assertSameOrigin(page, originUrl);
-      await page.getByRole(role, { name }).fill(value);
+      const actualValue =
+        credentialValue && name && CREDENTIAL_LIKE_KEY.test(name) ? credentialValue : value;
+      await page.getByRole(role, { name }).fill(actualValue);
       return { url: page.url() };
     },
   });
