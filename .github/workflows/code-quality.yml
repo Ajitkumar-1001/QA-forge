@@ -1,0 +1,40 @@
+name: Code Quality
+
+on:
+  schedule:
+    # Every 5 hours: 00:00, 05:00, 10:00, 15:00, 20:00 UTC
+    - cron: "0 */5 * * *"
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
