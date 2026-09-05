@@ -146,7 +146,7 @@ export type Tone = "neutral" | "active" | "success" | "warning" | "error";
 // equivalent (shadcn's Badge variants are default/secondary/destructive/outline/ghost/link), so
 // it's layered on top of the shadcn Badge via className using the status-* tokens from globals.css.
 const BADGE_TONE: Record<Tone, { outline: string; solid: string }> = {
-  neutral: { outline: "border-border-strong! bg-transparent text-muted-foreground", solid: "border-border-strong! bg-secondary text-foreground" },
+  neutral: { outline: "border-border-strong bg-transparent text-muted-foreground", solid: "border-border-strong bg-secondary text-foreground" },
   active: { outline: "border-status-active/45 bg-transparent text-status-active", solid: "border-primary! bg-primary text-primary-foreground" },
   success: { outline: "border-status-success/45 bg-transparent text-status-success", solid: "border-status-success/60 bg-status-success-muted text-foreground" },
   warning: { outline: "border-status-warning/45 bg-transparent text-status-warning", solid: "border-status-warning/60 bg-status-warning-muted text-foreground" },

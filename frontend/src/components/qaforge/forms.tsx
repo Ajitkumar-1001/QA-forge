@@ -2,26 +2,38 @@
 
 import * as React from "react";
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
-import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group";
-import { Radio as RadioPrimitive } from "@base-ui/react/radio";
-import { Select as SelectPrimitive } from "@base-ui/react/select";
-import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
 import { Icon } from "./icon";
+import { Label as ShadcnLabel } from "@/components/ui/label";
+import { Input as ShadcnInput } from "@/components/ui/input";
+import { Textarea as ShadcnTextarea } from "@/components/ui/textarea";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Select as ShadcnSelect, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@/components/ui/command";
+import { RadioGroup as ShadcnRadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch as ShadcnSwitch } from "@/components/ui/switch";
+import { cn } from "cn";
 
-// Ported from the imported design project's component bundle (components/ui/forms/**).
-// Checkbox/RadioGroup/Select/Switch are backed by Base UI (already installed via components.json's
-// shadcn scaffold) for real focus/keyboard/a11y behavior; everything renders through the same
-// qf-* classes as the rest of the design system so screens don't need to change.
+// Adapter layer: same exports/props as the original qf-* form primitives so screens don't change —
+// internals now render real shadcn/ui (Base UI flavor) components instead of qf-* CSS classes, same
+// convention as primitives.tsx. Checkbox/RadioGroup/Select/Switch already wrapped Base UI directly;
+// the installed shadcn ui/checkbox.tsx, radio-group.tsx, select.tsx, switch.tsx wrap those same
+// primitives with shadcn's styling.
 
 // ---------------------------------------------------------------------------
 // Label, Field
 // ---------------------------------------------------------------------------
 
-export function Label({ required = false, className = "", children, ...rest }: { required?: boolean } & React.LabelHTMLAttributes<HTMLLabelElement>) {
-  return <label className={`qf-label ${required ? "qf-label--required" : ""} ${className}`.trim()} {...rest}>{children}</label>;
+export function Label({ required = false, className, children, ...rest }: { required?: boolean } & React.LabelHTMLAttributes<HTMLLabelElement>) {
+  return (
+    <ShadcnLabel className={className} {...rest}>
+      {children}
+      {required ? <span className="text-destructive">*</span> : null}
+    </ShadcnLabel>
+  );
 }
 
-export function Field({ label, htmlFor, description, error, required = false, orientation = "vertical", className = "", children, ...rest }: {
+export function Field({ label, htmlFor, description, error, required = false, orientation = "vertical", className, children, ...rest }: {
   label?: React.ReactNode;
   htmlFor?: string;
   description?: React.ReactNode;
@@ -31,14 +43,14 @@ export function Field({ label, htmlFor, description, error, required = false, or
 } & React.HTMLAttributes<HTMLDivElement>) {
   const horizontal = orientation === "horizontal";
   return (
-    <div className={`qf-field ${horizontal ? "qf-field--horizontal" : ""} ${className}`.trim()} {...rest}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+    <div className={cn("flex gap-4", horizontal ? "flex-row items-center justify-between" : "flex-col gap-1.5", className)} {...rest}>
+      <div className="flex min-w-0 flex-col gap-0.5">
         {label ? <Label htmlFor={htmlFor} required={required}>{label}</Label> : null}
-        {horizontal && description ? <span className="qf-field__description">{description}</span> : null}
+        {horizontal && description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
       </div>
       {children}
-      {!horizontal && description && !error ? <span className="qf-field__description">{description}</span> : null}
-      {error ? <span className="qf-field__error" role="alert"><Icon name="CircleAlert" size={12} />{error}</span> : null}
+      {!horizontal && description && !error ? <span className="text-xs text-muted-foreground">{description}</span> : null}
+      {error ? <span className="flex items-center gap-1.5 text-xs text-destructive" role="alert"><Icon name="CircleAlert" size={12} />{error}</span> : null}
     </div>
   );
 }
@@ -54,15 +66,22 @@ export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElem
   invalid?: boolean;
 }
 
-export function Input({ mono = false, size = "md", icon, invalid = false, className = "", ...rest }: InputProps) {
-  const cls = ["qf-input", mono ? "qf-input--mono" : "", size === "sm" ? "qf-input--sm" : "", className].filter(Boolean).join(" ");
-  const input = <input className={cls} aria-invalid={invalid || undefined} {...rest} />;
+export function Input({ mono = false, size = "md", icon, invalid = false, className, ...rest }: InputProps) {
+  const sizeCls = size === "sm" ? "h-7 text-xs" : undefined;
+  const input = <ShadcnInput className={cn(mono && "font-mono", sizeCls, !icon && className)} aria-invalid={invalid || undefined} {...rest} />;
   if (!icon) return input;
-  return <div className="qf-input-wrap"><Icon name={icon} size={14} />{input}</div>;
+  return (
+    <InputGroup className={cn(sizeCls, className)}>
+      <InputGroupAddon><Icon name={icon} size={14} /></InputGroupAddon>
+      <InputGroupInput className={cn(mono && "font-mono")} aria-invalid={invalid || undefined} {...rest} />
+    </InputGroup>
+  );
 }
 
-export function Textarea({ rows = 3, className = "", ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={`qf-textarea ${className}`.trim()} rows={rows} {...rest} />;
+export function Textarea({ rows = 3, className, ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  // ponytail: shadcn's Textarea defaults to field-sizing-content (grows with input); the original
+  // qf-textarea was a fixed-height, manually vertical-resizable box — keep that behavior.
+  return <ShadcnTextarea className={cn("field-sizing-fixed resize-y", className)} rows={rows} {...rest} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +90,7 @@ export function Textarea({ rows = 3, className = "", ...rest }: React.TextareaHT
 
 export type SelectOption = string | { value: string; label: string; disabled?: boolean };
 
-export function Select({ options = [], value, defaultValue, onValueChange, placeholder, size = "md", disabled = false, className = "", id, style }: {
+export function Select({ options = [], value, defaultValue, onValueChange, placeholder, size = "md", disabled = false, className, id, style }: {
   options?: SelectOption[];
   value?: string;
   defaultValue?: string;
@@ -84,38 +103,27 @@ export function Select({ options = [], value, defaultValue, onValueChange, place
   style?: React.CSSProperties;
 }) {
   const opts = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
-  const labelFor = (v: string | null) => opts.find((o) => o.value === v)?.label ?? v;
   return (
-    <div className={`qf-select ${size === "sm" ? "qf-select--sm" : ""} ${className}`.trim()} style={style}>
-      <SelectPrimitive.Root value={value ?? null} defaultValue={defaultValue} onValueChange={(v) => onValueChange?.(v as string)} disabled={disabled}>
-        <SelectPrimitive.Trigger id={id} className="qf-select__trigger">
-          <SelectPrimitive.Value placeholder={placeholder}>{(v: string | null) => labelFor(v)}</SelectPrimitive.Value>
-          <SelectPrimitive.Icon className="qf-select__chevron"><Icon name="ChevronDown" size={14} /></SelectPrimitive.Icon>
-        </SelectPrimitive.Trigger>
-        <SelectPrimitive.Portal>
-          <SelectPrimitive.Positioner sideOffset={4} className="qf-select__positioner">
-            <SelectPrimitive.Popup className="qf-select__popup">
-              {opts.map((o) => (
-                <SelectPrimitive.Item key={o.value} value={o.value} disabled={o.disabled} className="qf-select__item">
-                  <SelectPrimitive.ItemText>{o.label}</SelectPrimitive.ItemText>
-                </SelectPrimitive.Item>
-              ))}
-            </SelectPrimitive.Popup>
-          </SelectPrimitive.Positioner>
-        </SelectPrimitive.Portal>
-      </SelectPrimitive.Root>
-    </div>
+    <ShadcnSelect value={value ?? undefined} defaultValue={defaultValue} onValueChange={(v) => onValueChange?.(v as string)} disabled={disabled}>
+      <SelectTrigger id={id} size={size === "sm" ? "sm" : "default"} className={cn("w-full", className)} style={style}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {opts.map((o) => (
+          <SelectItem key={o.value} value={o.value} disabled={o.disabled}>{o.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </ShadcnSelect>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Combobox — searchable single-select. Hand-rolled (outside-click + filter),
-// matching the source; Base UI's combobox targets a different (async) use case.
+// Combobox — searchable single-select, composed from Popover + Command (cmdk owns filtering).
 // ---------------------------------------------------------------------------
 
 export interface ComboboxOption { value: string; label: string; hint?: string; icon?: string }
 
-export function Combobox({ options = [], value, defaultValue, onValueChange, placeholder = "Select…", searchPlaceholder = "Search…", emptyText = "No results.", icon, disabled = false, className = "", style }: {
+export function Combobox({ options = [], value, defaultValue, onValueChange, placeholder = "Select…", searchPlaceholder = "Search…", emptyText = "No results.", icon, disabled = false, className, style }: {
   options?: ComboboxOption[];
   value?: string;
   defaultValue?: string;
@@ -129,66 +137,54 @@ export function Combobox({ options = [], value, defaultValue, onValueChange, pla
   style?: React.CSSProperties;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [query, setQuery] = React.useState("");
   const [internal, setInternal] = React.useState(defaultValue);
-  const ref = React.useRef<HTMLDivElement>(null);
   const current = value !== undefined ? value : internal;
   const selected = options.find((o) => o.value === current);
-  const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()));
-  React.useEffect(() => {
-    if (!open) return undefined;
-    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
   const choose = (v: string) => {
     if (value === undefined) setInternal(v);
     onValueChange?.(v);
     setOpen(false);
-    setQuery("");
   };
   return (
-    <div className={`qf-combobox ${className}`.trim()} ref={ref} style={style}>
-      <button type="button" className="qf-combobox__trigger" aria-haspopup="listbox" aria-expanded={open} disabled={disabled} onClick={() => setOpen((o) => !o)}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0, overflow: "hidden" }}>
-          {icon || selected?.icon ? <Icon name={selected?.icon || icon || ""} size={14} style={{ color: "var(--text-tertiary)" }} /> : null}
-          {selected ? <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected.label}</span> : <span className="qf-combobox__placeholder">{placeholder}</span>}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        disabled={disabled}
+        className={cn("flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50", className)}
+        style={style}
+      >
+        <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+          {icon || selected?.icon ? <Icon name={selected?.icon || icon || ""} size={14} className="text-muted-foreground" /> : null}
+          {selected ? <span className="truncate">{selected.label}</span> : <span className="text-muted-foreground">{placeholder}</span>}
         </span>
-        <Icon name="ChevronsUpDown" size={14} style={{ color: "var(--text-tertiary)" }} />
-      </button>
-      {open ? (
-        <div className="qf-combobox__popover" role="listbox">
-          <div className="qf-combobox__search">
-            <Icon name="Search" size={14} />
-            <input autoFocus value={query} placeholder={searchPlaceholder} onChange={(e) => setQuery(e.target.value)} />
-          </div>
-          <div className="qf-combobox__list">
-            {filtered.length === 0 ? (
-              <div className="qf-combobox__empty">{emptyText}</div>
-            ) : (
-              filtered.map((o) => (
-                <div key={o.value} role="option" className="qf-combobox__item" aria-selected={o.value === current} onClick={() => choose(o.value)}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                    {o.icon ? <Icon name={o.icon} size={14} style={{ color: "var(--text-tertiary)" }} /> : null}
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.label}</span>
-                    {o.hint ? <span className="qf-tertiary" style={{ fontSize: 12 }}>{o.hint}</span> : null}
-                  </span>
-                  {o.value === current ? <Icon name="Check" size={14} /> : null}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      ) : null}
-    </div>
+        <Icon name="ChevronsUpDown" size={14} className="shrink-0 text-muted-foreground" />
+      </PopoverTrigger>
+      <PopoverContent className="w-(--anchor-width) p-0" align="start">
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>{emptyText}</CommandEmpty>
+            {options.map((o) => (
+              <CommandItem key={o.value} value={o.value} keywords={[o.label]} onSelect={() => choose(o.value)}>
+                {o.icon ? <Icon name={o.icon} size={14} className="text-muted-foreground" /> : null}
+                <span className="flex-1 truncate">{o.label}</span>
+                {o.hint ? <span className="text-xs text-muted-foreground">{o.hint}</span> : null}
+                {o.value === current ? <Icon name="Check" size={14} /> : null}
+              </CommandItem>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Checkbox (Base UI)
+// Checkbox (Base UI) — composed directly from the primitive (not ui/checkbox.tsx): that file's
+// indicator always shows a fixed check glyph with no data-indeterminate style, so it can't render
+// the dash/indeterminate state used by e.g. "select all" checkboxes.
 // ---------------------------------------------------------------------------
 
-export function Checkbox({ label, description, checked, defaultChecked = false, indeterminate = false, onCheckedChange, disabled = false, id, name, className = "" }: {
+export function Checkbox({ label, description, checked, defaultChecked = false, indeterminate = false, onCheckedChange, disabled = false, id, name, className }: {
   label?: React.ReactNode;
   description?: React.ReactNode;
   checked?: boolean;
@@ -201,7 +197,7 @@ export function Checkbox({ label, description, checked, defaultChecked = false, 
   className?: string;
 }) {
   return (
-    <label className={`qf-checkbox ${disabled ? "qf-checkbox--disabled" : ""} ${className}`.trim()}>
+    <label className={cn("flex items-start gap-2", disabled && "opacity-50", className)}>
       <CheckboxPrimitive.Root
         id={id}
         name={name}
@@ -210,16 +206,16 @@ export function Checkbox({ label, description, checked, defaultChecked = false, 
         indeterminate={indeterminate}
         disabled={disabled}
         onCheckedChange={(v) => onCheckedChange?.(v)}
-        className="qf-checkbox__box"
+        className="relative mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground data-indeterminate:border-primary data-indeterminate:bg-primary data-indeterminate:text-primary-foreground"
       >
-        <CheckboxPrimitive.Indicator keepMounted={indeterminate}>
+        <CheckboxPrimitive.Indicator keepMounted={indeterminate} className="grid place-content-center [&>svg]:size-3">
           <Icon name={indeterminate ? "Minus" : "Check"} size={12} strokeWidth={3} />
         </CheckboxPrimitive.Indicator>
       </CheckboxPrimitive.Root>
       {label || description ? (
-        <span className="qf-checkbox__text">
+        <span className="flex flex-col gap-0.5 text-sm">
           {label ? <span>{label}</span> : null}
-          {description ? <span className="qf-checkbox__description">{description}</span> : null}
+          {description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
         </span>
       ) : null}
     </label>
@@ -232,7 +228,7 @@ export function Checkbox({ label, description, checked, defaultChecked = false, 
 
 export interface RadioOption { value: string; label: React.ReactNode; description?: React.ReactNode; disabled?: boolean }
 
-export function RadioGroup({ options = [], value, defaultValue, onValueChange, name, orientation = "vertical", className = "" }: {
+export function RadioGroup({ options = [], value, defaultValue, onValueChange, name, orientation = "vertical", className }: {
   options?: RadioOption[];
   value?: string;
   defaultValue?: string;
@@ -242,25 +238,23 @@ export function RadioGroup({ options = [], value, defaultValue, onValueChange, n
   className?: string;
 }) {
   return (
-    <RadioGroupPrimitive
+    <ShadcnRadioGroup
       name={name}
       value={value}
       defaultValue={defaultValue}
       onValueChange={(v) => onValueChange?.(v as string)}
-      className={`qf-radio-group ${orientation === "horizontal" ? "qf-radio-group--horizontal" : ""} ${className}`.trim()}
+      className={cn(orientation === "horizontal" ? "flex flex-row flex-wrap gap-5" : "flex flex-col gap-2.5", className)}
     >
       {options.map((o) => (
-        <label key={o.value} className="qf-radio" style={o.disabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined}>
-          <RadioPrimitive.Root value={o.value} disabled={o.disabled} className="qf-radio__dot">
-            <RadioPrimitive.Indicator />
-          </RadioPrimitive.Root>
-          <span className="qf-radio__text">
+        <label key={o.value} className={cn("flex items-start gap-2", o.disabled && "cursor-not-allowed opacity-50")}>
+          <RadioGroupItem value={o.value} disabled={o.disabled} className="mt-0.5" />
+          <span className="flex flex-col gap-0.5 text-sm">
             <span>{o.label}</span>
-            {o.description ? <span className="qf-radio__description">{o.description}</span> : null}
+            {o.description ? <span className="text-xs text-muted-foreground">{o.description}</span> : null}
           </span>
         </label>
       ))}
-    </RadioGroupPrimitive>
+    </ShadcnRadioGroup>
   );
 }
 
@@ -268,7 +262,7 @@ export function RadioGroup({ options = [], value, defaultValue, onValueChange, n
 // Switch (Base UI)
 // ---------------------------------------------------------------------------
 
-export function Switch({ checked, defaultChecked = false, onCheckedChange, disabled = false, size = "md", id, className = "" }: {
+export function Switch({ checked, defaultChecked = false, onCheckedChange, disabled = false, size = "md", id, className }: {
   checked?: boolean;
   defaultChecked?: boolean;
   onCheckedChange?: (checked: boolean) => void;
@@ -278,15 +272,14 @@ export function Switch({ checked, defaultChecked = false, onCheckedChange, disab
   className?: string;
 }) {
   return (
-    <SwitchPrimitive.Root
+    <ShadcnSwitch
       id={id}
       checked={checked}
       defaultChecked={defaultChecked}
       disabled={disabled}
       onCheckedChange={(v) => onCheckedChange?.(v)}
-      className={`qf-switch ${size === "sm" ? "qf-switch--sm" : ""} ${className}`.trim()}
-    >
-      <SwitchPrimitive.Thumb className="qf-switch__thumb" />
-    </SwitchPrimitive.Root>
+      size={size === "sm" ? "sm" : "default"}
+      className={className}
+    />
   );
 }
