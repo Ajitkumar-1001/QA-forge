@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ValidationCheck } from "./validation.schema";
+import type { EvaluatedCheck } from "./validation.schema";
 
 export const evidenceLinkSchema = z.object({
   evidenceRef: z.string(),
@@ -11,7 +11,10 @@ export const evidenceLinkSchema = z.object({
 export const hypothesisCandidateSchema = z.object({
   description: z.string(),
   confidence: z.number().min(0).max(1),
-  evidenceLinks: z.array(evidenceLinkSchema),
+  // T058, 2026-09-04 /speckit-converge (FR-009): unenforced before this — a schema-valid
+  // hypothesis with zero evidence links could flow straight into the report, undermining "every
+  // hypothesis... with its supporting evidence, contradicting evidence" (FR-009's own text).
+  evidenceLinks: z.array(evidenceLinkSchema).min(1),
 });
 
 /** FR-009: at least two competing hypotheses, never just one — and no more than five, so an
@@ -31,5 +34,7 @@ export type HypothesisStatus = "PROPOSED" | "VALIDATING" | "SUPPORTED" | "REJECT
 export interface Hypothesis extends HypothesisCandidate {
   id: string;
   status: HypothesisStatus;
-  checks: ValidationCheck[];
+  /** Each proposed check paired with code's own evaluated outcome (T059, 2026-09-04
+   * /speckit-converge) — not the bare proposed checks alone. */
+  checks: EvaluatedCheck[];
 }

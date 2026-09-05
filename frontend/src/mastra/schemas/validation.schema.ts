@@ -31,3 +31,16 @@ export const validatorOutputSchema = z.object({
 });
 
 export type ValidatorOutput = z.infer<typeof validatorOutputSchema>;
+
+/**
+ * A proposed check paired with code's own evaluated outcome (T059, 2026-09-04 `/speckit-converge`)
+ * — `passed` here is always code-computed (`checkPasses`, validator.agent.ts), never the model's
+ * own self-report, even for a `semantic` check whose own `passed` field is the model's claim being
+ * evaluated, not the recorded outcome. Keeps Constitution I's code-decides boundary visible in the
+ * type: `Hypothesis.checks` carries this shape, not a bare `ValidationCheck[]`, so a REJECTED
+ * hypothesis's report data can state which check(s) actually failed and why.
+ */
+export interface EvaluatedCheck {
+  check: ValidationCheck;
+  passed: boolean;
+}

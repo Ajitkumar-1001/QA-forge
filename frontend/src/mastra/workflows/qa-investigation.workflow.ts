@@ -17,6 +17,7 @@ import type { PlannedStep } from "../schemas/test-plan.schema";
 import type { StepCriterion } from "../schemas/step-criterion.schema";
 import type { Hypothesis } from "../schemas/hypothesis.schema";
 import type { Evidence, Report, Step as StepEntity } from "../types";
+import { logEvent } from "../observability";
 
 /**
  * The post-loop `.branch()`'s two verdict predicates, pinned as literal negations per
@@ -149,6 +150,8 @@ export interface QaInvestigationInput {
   steps: PlannedStep[];
   /** NFR-001's "max agent loops" — tunable via `--max-steps`, contracts/cli-contract.md. */
   maxIterations?: number;
+  /** NFR-005's informal log (T061, 2026-09-04 /speckit-converge) — tags every event this run emits. */
+  runId: string;
 }
 
 /**
@@ -188,7 +191,6 @@ export async function runQaInvestigation(input: QaInvestigationInput): Promise<R
     await installNavigationGuard(context);
     const page = await context.newPage();
     const recorder = createEvidenceRecorder(page, input.credentialValue);
-    const consoleMessages: string[] = [];
 
     const navigateTool = createNavigateTool(page);
     const initialNav = (await navigateTool.execute!(
@@ -200,22 +202,35 @@ export async function runQaInvestigation(input: QaInvestigationInput): Promise<R
     for (const plannedStep of input.steps) {
       let observed: string | null = null;
       let status: StepEntity["status"] = "RUNNING";
+      logEvent({
+        type: "step_start",
+        runId: input.runId,
+        position: plannedStep.position,
+        action: plannedStep.action,
+      });
 
       try {
         await executeStepAction(page, input.applicationUrl, plannedStep.action);
+        // T054, 2026-09-04 /speckit-converge (FR-004, contradicts): the prior local
+        // `consoleMessages` array was declared but never populated by anything, so a
+        // `consoleAbsent` criterion was vacuously always true. `recorder` is the actual source of
+        // truth for captured console output.
         const succeeded = await checkCriterion(
           plannedStep.successCriteria,
           page,
-          consoleMessages,
+          recorder.getConsoleMessages().map((message) => message.text),
           lastStatus,
         );
         status = succeeded ? "PASSED" : "FAILED";
         observed = page.url();
       } catch (error) {
         status = "FAILED";
-        observed = (error as Error).message;
+        // T056, 2026-09-04 /speckit-converge (FR-005): previously only the error message, never
+        // the current URL, on this branch.
+        observed = `${(error as Error).message} (at ${page.url()})`;
       }
 
+      logEvent({ type: "step_end", runId: input.runId, position: plannedStep.position, status });
       executedSteps.push({
         position: plannedStep.position,
         action: plannedStep.action,
@@ -261,6 +276,7 @@ export async function runQaInvestigation(input: QaInvestigationInput): Promise<R
     repoUrl: input.repoUrl,
     githubToken: input.githubToken,
     evidence,
+    runId: input.runId,
   });
   const workflow = buildInvestigationWorkflow(deps, maxIterations);
   const run = await workflow.createRun();

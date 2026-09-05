@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "QAForge",
-  description: "Autonomous QA + debugging agent console.",
+  description: "Autonomous QA + debugging agent console, Built by Ajitkumar Senthil Kumar - https://www.ajitkumar.io",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

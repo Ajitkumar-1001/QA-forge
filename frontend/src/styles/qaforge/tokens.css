@@ -58,6 +58,13 @@ color-scheme:dark;
 --input:var(--border);
 --ring:var(--blue-500);
 --link:var(--blue-500);
+/* shadcn ui/sidebar.tsx aliases — matches the .qf-sidebar rules in ui.css */
+--sidebar:var(--surface-1);
+--sidebar-foreground:var(--text-secondary);
+--sidebar-border:var(--border);
+--sidebar-accent:var(--selected-bg);
+--sidebar-accent-foreground:var(--text-primary);
+--sidebar-ring:var(--ring);
 /* Interaction */
 --hover-overlay:rgba(250,250,250,0.04);
 --active-overlay:rgba(250,250,250,0.07);
@@ -155,6 +162,11 @@ color-scheme:dark;
 @keyframes qf-skeleton{0%,100%{opacity:1}50%{opacity:0.5}}
 @media (prefers-reduced-motion:reduce){:root{--duration-fast:0ms;--duration-base:0ms;--duration-slow:0ms}*{animation-duration:0.01ms!important;animation-iteration-count:1!important}}
 
+/* @layer base (not unlayered) so Tailwind utility classes — which live in @layer utilities —
+   can still override this reset. Unlayered CSS always beats layered CSS regardless of specificity,
+   which is why shadcn components rendered as <a> (Sidebar/Pagination/Breadcrumb links, etc.) were
+   inheriting this blue link color even with an explicit text-* utility class applied. */
+@layer base {
 html{background:var(--background);color:var(--text-primary);font-family:var(--font-sans);font-size:var(--text-body-size);line-height:var(--text-body-lh);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 body{margin:0;background:var(--background);color:var(--text-primary);font-family:var(--font-sans);font-size:var(--text-body-size);line-height:var(--text-body-lh)}
 *,*::before,*::after{box-sizing:border-box}
@@ -168,3 +180,4 @@ button,input,select,textarea{font:inherit;color:inherit}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:5px;border:2px solid transparent;background-clip:padding-box}
 ::-webkit-scrollbar-track{background:transparent}
+}

@@ -63,6 +63,11 @@ export interface CapturedNetworkEntry {
   requestHeaders: Record<string, string>;
   responseHeaders: Record<string, string>;
   responseBody?: unknown;
+  /** Elapsed ms between request start and response/failure (T055, 2026-09-04
+   * /speckit-converge — FR-005 names "timing information" as a required capture; undefined when
+   * the matching request-start timestamp wasn't recorded (e.g. a response with no prior 'request'
+   * event in this capture window). */
+  durationMs?: number;
 }
 
 /**
@@ -98,6 +103,7 @@ export function assembleEvidence(params: {
       status: entry.status,
       requestHeaders: redactHeaders(entry.requestHeaders, params.credentialValue),
       responseHeaders: redactHeaders(entry.responseHeaders, params.credentialValue),
+      durationMs: entry.durationMs,
     });
   }
 
@@ -135,6 +141,9 @@ export function createEvidenceRecorder(page: Page, credentialValue?: string): Ev
   const consoleMessages: CapturedConsoleMessage[] = [];
   const networkEntries: CapturedNetworkEntry[] = [];
   const requestHeadersByUrl = new Map<string, Record<string, string>>();
+  // T055, 2026-09-04 /speckit-converge (FR-005): request-start timestamps, keyed by URL, so the
+  // matching 'response'/'requestfailed' event can compute an elapsed duration.
+  const requestStartByUrl = new Map<string, number>();
   const pendingCaptures: Promise<void>[] = [];
 
   page.on("console", (message) => {
@@ -146,11 +155,17 @@ export function createEvidenceRecorder(page: Page, credentialValue?: string): Ev
   });
   page.on("request", (request) => {
     requestHeadersByUrl.set(request.url(), redactHeaders(request.headers(), credentialValue));
+    requestStartByUrl.set(request.url(), Date.now());
   });
   page.on("response", (response) => {
+    const startedAt = requestStartByUrl.get(response.url());
+    const durationMs = startedAt !== undefined ? Date.now() - startedAt : undefined;
     const capture = response
       .json()
-      .catch(() => undefined)
+      // T057, 2026-09-04 /speckit-converge (FR-005): a non-JSON failure response (an HTML error
+      // page, plain text) previously became `undefined` with no fallback — fall back to the raw
+      // text body before giving up.
+      .catch(() => response.text().catch(() => undefined))
       .then((responseBody) => {
         networkEntries.push({
           url: response.url(),
@@ -158,18 +173,21 @@ export function createEvidenceRecorder(page: Page, credentialValue?: string): Ev
           requestHeaders: requestHeadersByUrl.get(response.url()) ?? {},
           responseHeaders: redactHeaders(response.headers(), credentialValue),
           responseBody: redactBody(responseBody, credentialValue),
+          durationMs,
         });
       });
     pendingCaptures.push(capture);
   });
   page.on("requestfailed", (request) => {
     // Covers failures the 'response' event never sees (research.md §3).
+    const startedAt = requestStartByUrl.get(request.url());
     networkEntries.push({
       url: request.url(),
       status: 0,
       requestHeaders: redactHeaders(request.headers(), credentialValue),
       responseHeaders: {},
       responseBody: { error: request.failure()?.errorText },
+      durationMs: startedAt !== undefined ? Date.now() - startedAt : undefined,
     });
   });
 
@@ -211,6 +229,18 @@ export function createEvidenceTool(
         network: recorder.getNetworkEntries(),
         domHtml,
         credentialValue: options.credentialValue,
+      });
+      // T056, 2026-09-04 /speckit-converge (FR-005): the current URL previously landed only on
+      // Step.observed (and only on one of the two failure paths) — never in the Evidence bundle
+      // the investigation LLM prompts actually consume. Captured here unconditionally, since this
+      // tool runs on every step failure regardless of which branch (criterion-false or exception)
+      // triggered it.
+      evidence.push({
+        id: crypto.randomUUID(),
+        stepId,
+        type: "HTTP",
+        content: JSON.stringify({ currentUrl: redactValue(page.url(), options.credentialValue) }),
+        metadata: {},
       });
       if (options.redirectChain?.length) {
         evidence.push({

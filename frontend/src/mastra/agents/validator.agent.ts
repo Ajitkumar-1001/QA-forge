@@ -1,6 +1,10 @@
 import { Agent } from "@mastra/core/agent";
 import { generateValidated, validatorModel } from "../llm";
-import { validatorOutputSchema, type ValidationCheck } from "../schemas/validation.schema";
+import {
+  validatorOutputSchema,
+  type ValidationCheck,
+  type EvaluatedCheck,
+} from "../schemas/validation.schema";
 import type { StepCriterion } from "../schemas/step-criterion.schema";
 import type {
   Hypothesis,
@@ -24,7 +28,9 @@ export const validatorAgent = new Agent({
     "code will evaluate directly against the evidence) whenever the assertion reduces to one. Only",
     "use a 'semantic' check, with your own honest passed/failed judgment, for assertions that",
     "genuinely can't be expressed as one of those predicates. Never claim a structured predicate",
-    "is true yourself — propose it as a structured check and let code decide.",
+    "is true yourself — propose it as a structured check and let code decide. Each piece of",
+    "evidence below is labeled with its own EVIDENCE_ID line — set evidenceId to that exact string",
+    "for whichever evidence the check is against, never a description or a made-up id.",
   ].join(" "),
   model: validatorModel,
 });
@@ -65,19 +71,28 @@ function checkPasses(check: ValidationCheck, evidenceById: Map<string, Evidence>
  * Code decides SUPPORTED/REJECTED/VALIDATING from the checks the Validator Agent proposed
  * (FR-010, Constitution Principle I) — `status = REJECTED` iff any check fails; `SUPPORTED` iff
  * every check passes AND the confidence bar is met; otherwise the hypothesis stays non-terminal
- * (data-model.md).
+ * (data-model.md). Requires at least one `structured` (code-evaluated) check to reach either
+ * terminal outcome (T053, 2026-09-04 /speckit-converge, CRITICAL) — an all-`semantic` check set is
+ * entirely the model's own self-report; code contributes nothing but a trivial AND over LLM
+ * claims, which is not "deterministic code evaluating structured evidence" per Constitution I.
  */
 export function evaluateHypothesis(
   candidate: HypothesisCandidate,
   checks: ValidationCheck[],
   evidenceById: Map<string, Evidence>,
 ): Hypothesis {
-  const results = checks.map((check) => checkPasses(check, evidenceById));
-  const anyFailed = results.some((passed) => !passed);
-  const allPassed = results.every((passed) => passed);
+  const evaluated: EvaluatedCheck[] = checks.map((check) => ({
+    check,
+    passed: checkPasses(check, evidenceById),
+  }));
+  const anyFailed = evaluated.some((e) => !e.passed);
+  const allPassed = evaluated.every((e) => e.passed);
+  const hasStructuredCheck = checks.some((check) => check.kind === "structured");
 
   let status: HypothesisStatus;
-  if (anyFailed) {
+  if (!hasStructuredCheck) {
+    status = "VALIDATING";
+  } else if (anyFailed) {
     status = "REJECTED";
   } else if (allPassed && candidate.confidence >= CONFIDENCE_BAR) {
     status = "SUPPORTED";
@@ -85,7 +100,10 @@ export function evaluateHypothesis(
     status = "VALIDATING";
   }
 
-  return { id: crypto.randomUUID(), ...candidate, status, checks };
+  // T059, 2026-09-04 /speckit-converge: persists code's own per-check outcome (`evaluated`), not
+  // the bare proposed `checks` — a REJECTED hypothesis's report data can now state which specific
+  // check(s) failed and why, not only what was proposed.
+  return { id: crypto.randomUUID(), ...candidate, status, checks: evaluated };
 }
 
 /**

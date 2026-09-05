@@ -6,6 +6,7 @@ import { evaluateHypothesis, proposeChecks } from "../agents/validator.agent";
 import type { HypothesisCandidate } from "../schemas/hypothesis.schema";
 import type { Evidence } from "../types";
 import { type ToolResult } from "../prompt-context";
+import { logEvent } from "../observability";
 
 /**
  * The composite step's pure sequencing logic — `investigateRepo → createHypotheses →
@@ -65,12 +66,18 @@ export interface InvestigationRoundContext {
   /** The step-failure evidence (already redacted), cited by every round's hypothesis/validator
    * prompts — not just the repository content each round newly discovers. */
   evidence: Evidence[];
+  /** NFR-005's informal log (T061, 2026-09-04 /speckit-converge). */
+  runId: string;
 }
 
 function evidenceToToolResults(evidence: Evidence[]): ToolResult[] {
   return evidence.map((item) => ({
     provenance: item.type === "CODE" ? ("code" as const) : ("browser" as const),
     content: item.content,
+    // T050, 2026-09-04 /speckit-converge: without this, no prompt ever showed the model a real
+    // evidence id, so every structured check's evidenceId was uncitable and evaluateHypothesis
+    // rejected it by construction — see prompt-context.ts's ToolResult.id doc for the full story.
+    id: item.id,
   }));
 }
 
@@ -82,6 +89,9 @@ export function createInvestigationRoundDeps(
   const investigateTool = createInvestigateTool(context.githubToken);
   const evidenceById = new Map(context.evidence.map((item) => [item.id, item]));
   const baseEvidence = evidenceToToolResults(context.evidence);
+  // T061, 2026-09-04 /speckit-converge: closure-local counter — `dountil` doesn't hand this step's
+  // execute an iteration number, and this is the composite step that runs once per round.
+  let iteration = 0;
 
   return {
     investigateRepo: async (searchHistory) => {
@@ -97,6 +107,9 @@ export function createInvestigationRoundDeps(
       const codeEvidence: ToolResult[] = candidateFiles.map((file) => ({
         provenance: "code",
         content: `${file.path}:\n${file.excerpt}`,
+        // Repository files have no Evidence.id (they never pass through evidence.tool.ts) — the
+        // file's own path is the natural, stable identifier a hypothesis's evidenceLinks can cite.
+        id: file.path,
       }));
       return generateHypotheses(context.objective, [...baseEvidence, ...codeEvidence]);
     },
@@ -114,6 +127,8 @@ export function createInvestigationRoundDeps(
         : validated.some((h) => h.status === "VALIDATING")
           ? "VALIDATING"
           : "REJECTED";
+      iteration += 1;
+      logEvent({ type: "loop_iteration", runId: context.runId, iteration });
       return { verdict, hypotheses: validated };
     },
   };

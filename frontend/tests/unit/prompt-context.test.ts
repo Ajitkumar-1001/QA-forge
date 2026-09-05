@@ -24,6 +24,16 @@ describe("toPromptContext — the prompt-injection defense boundary (FR-008, Con
     expect(wrapped.startsWith(maliciousContent)).toBe(false);
   });
 
+  it("renders the evidence id when one is supplied, so a model can cite it back (T050)", () => {
+    const wrapped = toPromptContext({ provenance: "browser", content: "console error: X", id: "evidence-1" });
+    expect(wrapped).toContain("EVIDENCE_ID: evidence-1");
+  });
+
+  it("omits the EVIDENCE_ID line entirely when no id is supplied", () => {
+    const wrapped = toPromptContext({ provenance: "browser", content: "console error: X" });
+    expect(wrapped).not.toContain("EVIDENCE_ID");
+  });
+
   it("uses the same wrapper structure for both provenance values", () => {
     const browserWrapped = toPromptContext({ provenance: "browser", content: "x" }).replace(
       /source="[^"]*"/,

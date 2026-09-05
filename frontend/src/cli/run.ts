@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { generateTestPlan } from "../mastra/agents/test-planner.agent";
+import { generateTestPlan, isPlanWellFormed } from "../mastra/agents/test-planner.agent";
 import { runQaInvestigation } from "../mastra/workflows/qa-investigation.workflow";
+import { logEvent } from "../mastra/observability";
 import type { Report } from "../mastra/types";
 
 /**
@@ -11,6 +12,26 @@ import type { Report } from "../mastra/types";
  */
 
 type OutputFormat = "text" | "json";
+
+/**
+ * NFR-001's "total steps" bound — previously entirely unenforced (T060, 2026-09-04
+ * /speckit-converge): the test-plan schema allowed unlimited steps, and nothing capped the
+ * execution loop. A Recommendation-tier default (PRD §20 states its execution limits as examples,
+ * not yet load-tested numbers) — the behavior (a bound exists) is the requirement, not this exact
+ * number. Distinct from `--max-steps` below, which actually bounds the investigation loop's own
+ * round-trips ("max agent loops"), not the count of planned scenario steps — a documentation
+ * mismatch corrected in contracts/cli-contract.md alongside this fix.
+ */
+const MAX_PLANNED_STEPS = 40;
+
+export function checkStepCountLimit(stepCount: number): void {
+  if (stepCount > MAX_PLANNED_STEPS) {
+    throw Object.assign(
+      new Error(`Test plan has ${stepCount} steps, exceeding the ${MAX_PLANNED_STEPS}-step limit`),
+      { reason: "LIMIT_EXCEEDED" as const },
+    );
+  }
+}
 
 function detectFormat(argv: string[]): OutputFormat {
   const index = argv.indexOf("--format");
@@ -125,10 +146,18 @@ async function main(): Promise<void> {
   }
 
   const plan = await generateTestPlan(args.objective);
-  if (!plan.plannable) {
-    throw Object.assign(new Error(plan.reason), { reason: "OBJECTIVE_NOT_PLANNABLE" });
+  // T052, 2026-09-04 /speckit-converge (CRITICAL, Constitution I): code re-verifies plannability
+  // independently rather than trusting plan.plannable directly — a plan that claims plannable but
+  // isn't actually well-formed is downgraded here, not passed through on the model's own say-so.
+  if (!isPlanWellFormed(plan)) {
+    const message = plan.plannable
+      ? "Test plan was marked plannable but its steps are malformed (empty action or expectedOutcome text)"
+      : plan.reason;
+    throw Object.assign(new Error(message), { reason: "OBJECTIVE_NOT_PLANNABLE" });
   }
+  checkStepCountLimit(plan.steps.length);
 
+  const runId = crypto.randomUUID();
   const report = await runQaInvestigation({
     objective: args.objective,
     applicationUrl: args.url,
@@ -137,6 +166,20 @@ async function main(): Promise<void> {
     credentialValue,
     steps: plan.steps,
     maxIterations: args.maxSteps,
+    runId,
+  });
+  // T061, 2026-09-04 /speckit-converge (NFR-005): observability.ts was built but never called from
+  // anywhere until this fix. Logs the run's own outcome plus, per hypothesis, whether it carries a
+  // cited evidence source — NFR-005's three named metrics.
+  logEvent({
+    type: "terminal",
+    runId,
+    result: report.result,
+    rootCauseConfirmed: report.result === "FAIL",
+    hypothesesEvidenceCited: report.hypotheses.map((hypothesis) => ({
+      hypothesisId: hypothesis.id,
+      hasCitedEvidence: hypothesis.evidenceLinks.length > 0,
+    })),
   });
 
   if (args.format === "json") {

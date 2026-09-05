@@ -2,6 +2,7 @@ import { Agent } from "@mastra/core/agent";
 import type { Page } from "playwright";
 import { browserExecutionModel } from "../llm";
 import { createActionTools } from "../tools/browser/actions.tool";
+import { toPromptContext } from "../prompt-context";
 
 /** "Max browser steps"/"max retries per step" (PRD §20) — a distinct axis from the
  * investigation loop's "max agent loops" (NFR-001, research.md §2). */
@@ -36,10 +37,15 @@ export async function executeStepAction(
   });
 
   const snapshot = await page.locator("body").ariaSnapshot();
+  // T051, 2026-09-04 /speckit-converge (CRITICAL): this snapshot is captured application content
+  // (Constitution II) — it must go through the same untrusted-data wrapper every other prompt in
+  // this codebase uses, not a raw string interpolation. This is the one agent wired with
+  // state-changing tools (click/fill/submit), so an unwrapped, unlabeled snapshot was the widest
+  // prompt-injection surface in the feature.
   const prompt = [
     `Instruction: ${actionText}`,
     "Current page accessibility snapshot:",
-    snapshot,
+    toPromptContext({ provenance: "browser", content: snapshot }),
   ].join("\n\n");
 
   let result;

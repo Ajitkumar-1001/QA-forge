@@ -24,3 +24,20 @@ export const testPlannerAgent = new Agent({
 export async function generateTestPlan(objective: string): Promise<TestPlan> {
   return generateValidated(testPlannerAgent, `Objective: ${objective}`, testPlanSchema);
 }
+
+/**
+ * Constitution I: plannability is a terminal outcome and MUST be decided by code, not merely
+ * echoed from the model's own `plannable` claim. Independently re-verifies a `plannable: true`
+ * plan is actually well-formed — at least one step, each with non-empty action/expectedOutcome
+ * text — before the caller trusts it; a plan failing this check is treated as unplannable
+ * regardless of what the model asserted (T052, 2026-09-04 `/speckit-converge`, CRITICAL). The
+ * schema's own `.min(1)` on `steps` already rules out an empty array, but says nothing about
+ * empty-string field values, which zod's bare `z.string()` allows through.
+ */
+export function isPlanWellFormed(plan: TestPlan): plan is Extract<TestPlan, { plannable: true }> {
+  if (!plan.plannable) return false;
+  return (
+    plan.steps.length > 0 &&
+    plan.steps.every((step) => step.action.trim().length > 0 && step.expectedOutcome.trim().length > 0)
+  );
+}

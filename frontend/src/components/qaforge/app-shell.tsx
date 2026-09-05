@@ -6,6 +6,7 @@ import { AppSidebar, CommandMenu, TopBar } from "./shell";
 import { ToastRegion } from "./overlays";
 import { useQAForge, LIVE_STATUSES } from "./provider";
 import { MobileReview } from "./screens/mobile";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 // Ported from the imported design project's app/app.jsx — the shell (sidebar + top bar + command
 // palette + toasts) that wraps every route. Screens/routes derive from the real pathname instead
@@ -46,7 +47,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { runs, findings, approvals, toasts, go, dismissToast } = useQAForge();
   const isMobile = useIsMobile();
-  const [collapsed, setCollapsed] = React.useState(false);
   const [cmdOpen, setCmdOpen] = React.useState(false);
 
   const { screen, runId } = currentScreen(pathname);
@@ -79,12 +79,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="qf-shell" style={{ height: "100vh" }}>
-      <AppSidebar activeId={activeNav} collapsed={collapsed} onToggleCollapse={() => setCollapsed((c) => !c)} counts={{ runs: liveCount, findings: openCritical }} />
-      <div className="qf-shell__main">
+    <SidebarProvider style={{ "--sidebar-width": "248px", "--sidebar-width-icon": "52px" } as React.CSSProperties}>
+      <AppSidebar activeId={activeNav} counts={{ runs: liveCount, findings: openCritical }} />
+      <SidebarInset>
         <TopBar breadcrumb={crumbs} environment={envForBar} onSearch={() => setCmdOpen(true)} hasNotifications={liveCount + pendingCount > 0} onNotifications={() => go("agent-activity")} onUser={() => go("settings")} />
-        <div className="qf-shell__page" style={{ display: "flex", flexDirection: "column" }}>{children}</div>
-      </div>
+        <div className="flex flex-1 flex-col overflow-auto">{children}</div>
+      </SidebarInset>
       <CommandMenu
         open={cmdOpen}
         onOpenChange={setCmdOpen}
@@ -96,6 +96,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         extraGroups={[{ heading: "Recent runs", items: runs.slice(0, 3).map((r) => ({ id: r.id, label: `${r.id} · ${r.objective}`, icon: "Play", hint: r.status.replace("_", " ") })) }]}
       />
       <ToastRegion toasts={toasts} onDismiss={dismissToast} />
-    </div>
+    </SidebarProvider>
   );
 }

@@ -12,6 +12,8 @@ export const rootCauseAgent = new Agent({
     "For each, cite specific evidence that supports it and specific evidence that contradicts it,",
     "and give an honest confidence from 0.0 to 1.0. Never propose only one hypothesis, and never",
     "inflate confidence to make a single explanation look more certain than the evidence supports.",
+    "Each piece of evidence below is labeled with its own EVIDENCE_ID line — set evidenceRef to",
+    "that exact string for whichever evidence you're citing, never a description or a made-up id.",
   ].join(" "),
   model: rootCauseModel,
 });
