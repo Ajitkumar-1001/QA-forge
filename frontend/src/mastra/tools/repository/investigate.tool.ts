@@ -67,8 +67,9 @@ async function cloneRepository(
   } catch (error) {
     await fsp.rm(cloneDir, { recursive: true, force: true });
     if (askPassDir) await fsp.rm(askPassDir, { recursive: true, force: true });
-    throw new Error(
-      `REPO_ACCESS_DENIED: could not clone ${repoUrl} — ${(error as Error).message}`,
+    throw Object.assign(
+      new Error(`REPO_ACCESS_DENIED: could not clone ${repoUrl} — ${(error as Error).message}`),
+      { reason: "REPO_ACCESS_DENIED" as const },
     );
   }
 

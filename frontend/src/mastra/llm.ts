@@ -20,9 +20,14 @@ export const plannerModel = anthropic("claude-sonnet-5");
 export const browserExecutionModel = anthropic("claude-sonnet-5");
 
 /**
- * Thrown when structured output still fails validation after the repair attempt.
- * The CLI's top-level handler (T018) maps this to exit code 3 / LLM_PROVIDER_ERROR
- * (contracts/cli-contract.md, spec.md Edge Cases, resolved 2026-09-04 /speckit-clarify).
+ * Thrown when an LLM call never produces a validated result within the retry budget below —
+ * either the provider call itself kept failing (rate limit, timeout, auth, safety refusal) or the
+ * response kept failing schema validation. The CLI's top-level handler (T018) maps this to exit
+ * code 3 / LLM_PROVIDER_ERROR either way (contracts/cli-contract.md, spec.md Edge Cases, resolved
+ * 2026-09-04 /speckit-clarify) — the spec's retry policy is the same "one bounded retry per
+ * individual LLM call" regardless of which of the two failure kinds it was (spec.md Edge Cases,
+ * updated 2026-09-04 `/qa-only` — a raw `agent.generate()` throw was previously left unhandled
+ * here, propagating past this function with no `.reason`, landing as `UNKNOWN_ERROR` at the CLI).
  */
 export class StructuredOutputFailedError extends Error {
   /** Read by the CLI's top-level catch handler (run.ts) to pick the exit-3 reason code. */
@@ -46,6 +51,10 @@ export class StructuredOutputFailedError extends Error {
  * otherwise-resolved call, and `.object` is not guaranteed to satisfy our own schema. This
  * function makes both checks explicit and retries once with the specific failure appended,
  * capping at 2 total attempts, before failing closed.
+ *
+ * The call itself throwing (not just resolving with a bad/unparseable result) shares the same
+ * 2-attempt budget — a provider throw counts as a failed attempt and can still retry once, per
+ * spec.md's "one bounded retry... two total tries... per individual LLM call" policy.
  */
 export async function generateValidated<T>(
   agent: Agent,
@@ -59,7 +68,13 @@ export async function generateValidated<T>(
       ? `${prompt}\n\nYour previous response did not match the required schema: ${lastFailure}\nRespond again, correcting this.`
       : prompt;
 
-    const result = await agent.generate(message, { structuredOutput: { schema } });
+    let result;
+    try {
+      result = await agent.generate(message, { structuredOutput: { schema } });
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error);
+      continue;
+    }
 
     if (result.error) {
       lastFailure = result.error.message;
@@ -73,7 +88,5 @@ export async function generateValidated<T>(
     lastFailure = parsed.error.message;
   }
 
-  throw new StructuredOutputFailedError(
-    `Structured output failed schema validation after 2 attempts: ${lastFailure}`,
-  );
+  throw new StructuredOutputFailedError(`LLM call failed after 2 attempts: ${lastFailure}`);
 }

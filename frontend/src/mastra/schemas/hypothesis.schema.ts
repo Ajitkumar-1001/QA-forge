@@ -14,9 +14,12 @@ export const hypothesisCandidateSchema = z.object({
   evidenceLinks: z.array(evidenceLinkSchema),
 });
 
-/** FR-009: at least two competing hypotheses, never just one. */
+/** FR-009: at least two competing hypotheses, never just one — and no more than five, so an
+ * unbounded hypothesis count can't become its own resource-exhaustion vector (every hypothesis
+ * costs at least one further LLM call to validate). Added 2026-09-04 (`/review` checklist pass,
+ * CHK011) — the floor existed from the start; the ceiling didn't. */
 export const rootCauseOutputSchema = z.object({
-  hypotheses: z.array(hypothesisCandidateSchema).min(2),
+  hypotheses: z.array(hypothesisCandidateSchema).min(2).max(5),
 });
 
 export type EvidenceLink = z.infer<typeof evidenceLinkSchema>;
