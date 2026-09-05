@@ -2,7 +2,7 @@ import dns from "node:dns/promises";
 import ipaddr from "ipaddr.js";
 import { z } from "zod";
 import { createTool } from "@mastra/core/tools";
-import type { BrowserContext, Page } from "playwright";
+import type { BrowserContext, Page, Response } from "playwright";
 
 /**
  * SSRF Layer A (UX only, research.md §4): resolve the hostname and reject anything outside
@@ -68,6 +68,19 @@ export async function installNavigationGuard(context: BrowserContext): Promise<v
   }
 }
 
+/** Walks `redirectedFrom()` backward from the final response to build the full redirect chain
+ * (research.md §3) — for evidence.tool.ts (T031) to attach to a failed step's evidence. */
+export function getRedirectChain(response: Response | null): string[] {
+  if (!response) return [];
+  const chain: string[] = [response.url()];
+  let request = response.request().redirectedFrom();
+  while (request) {
+    chain.unshift(request.url());
+    request = request.redirectedFrom();
+  }
+  return chain;
+}
+
 const navigateInputSchema = z.object({ url: z.string() });
 
 /**
@@ -93,6 +106,7 @@ export function createNavigateTool(page: Page) {
         url: page.url(),
         status: response?.status() ?? null,
         ok: response?.ok() ?? false,
+        redirectChain: getRedirectChain(response),
       };
     },
   });

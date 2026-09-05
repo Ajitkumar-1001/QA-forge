@@ -18,9 +18,20 @@ function fakePage(goto: Page["goto"]): Page {
 }
 
 describe("navigate tool — non-SSRF navigation failures (research.md §3)", () => {
+  function fakeResponse(status: number, url: string) {
+    return {
+      status: () => status,
+      ok: () => status >= 200 && status < 300,
+      url: () => url,
+      request: () => ({ redirectedFrom: () => null }),
+    };
+  }
+
   it("surfaces a 4xx status without throwing — page.goto() doesn't throw on 4xx/5xx", async () => {
     const page = fakePage(
-      vi.fn().mockResolvedValue({ status: () => 404, ok: () => false }) as unknown as Page["goto"],
+      vi
+        .fn()
+        .mockResolvedValue(fakeResponse(404, "https://example.com/missing")) as unknown as Page["goto"],
     );
     const tool = createNavigateTool(page);
     const result = await tool.execute!({ url: "https://example.com/missing" }, {} as never);
@@ -29,7 +40,9 @@ describe("navigate tool — non-SSRF navigation failures (research.md §3)", () 
 
   it("surfaces a 5xx status without throwing", async () => {
     const page = fakePage(
-      vi.fn().mockResolvedValue({ status: () => 503, ok: () => false }) as unknown as Page["goto"],
+      vi
+        .fn()
+        .mockResolvedValue(fakeResponse(503, "https://example.com/down")) as unknown as Page["goto"],
     );
     const tool = createNavigateTool(page);
     const result = await tool.execute!({ url: "https://example.com/down" }, {} as never);

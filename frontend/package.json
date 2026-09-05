@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "qaforge": "tsx src/cli/run.ts",
+    "demo-app": "tsx demo-app/server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

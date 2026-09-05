@@ -1,11 +1,7 @@
+import { z } from "zod";
+import { createTool } from "@mastra/core/tools";
+import type { Page } from "playwright";
 import type { Evidence, EvidenceType } from "../../types";
-
-/**
- * PARTIAL FILE (built incrementally, TDD-first): this covers the pure, deterministic
- * redaction + assembly logic T023/T024's unit tests exercise. T031 adds the live Playwright
- * capture wrapper (page.on listeners, redirect-chain walking via redirectedFrom(), the
- * `createTool()` export) around what's already here.
- */
 
 const CREDENTIAL_LIKE_KEY = /pass(word)?|token|secret|api[-_]?key|auth|credential/i;
 const CREDENTIAL_HEADER_NAMES = new Set(["authorization", "cookie", "set-cookie"]);
@@ -83,7 +79,7 @@ export function assembleEvidence(params: {
 }): Evidence[] {
   const evidence: Evidence[] = [];
   const push = (type: EvidenceType, content: string, metadata: Record<string, unknown> = {}) => {
-    evidence.push({ stepId: params.stepId, type, content, metadata });
+    evidence.push({ id: crypto.randomUUID(), stepId: params.stepId, type, content, metadata });
   };
 
   if (params.console?.length) {
@@ -110,4 +106,101 @@ export function assembleEvidence(params: {
   }
 
   return evidence;
+}
+
+export interface EvidenceRecorder {
+  getConsoleMessages: () => CapturedConsoleMessage[];
+  getNetworkEntries: () => CapturedNetworkEntry[];
+}
+
+/**
+ * Registers listeners on `page` to accumulate console/network events for the lifetime of the
+ * page — must be attached before navigation (events before attachment are lost, research.md §3).
+ * `collectEvidenceTool` below reads whatever has accumulated so far when a step fails.
+ */
+export function createEvidenceRecorder(page: Page): EvidenceRecorder {
+  const consoleMessages: CapturedConsoleMessage[] = [];
+  const networkEntries: CapturedNetworkEntry[] = [];
+  const requestHeadersByUrl = new Map<string, Record<string, string>>();
+
+  page.on("console", (message) => {
+    consoleMessages.push({ type: message.type(), text: message.text() });
+  });
+  page.on("pageerror", (error) => {
+    // Uncaught exceptions aren't delivered via the 'console' event (research.md §3).
+    consoleMessages.push({ type: "pageerror", text: error.message });
+  });
+  page.on("request", (request) => {
+    requestHeadersByUrl.set(request.url(), request.headers());
+  });
+  page.on("response", (response) => {
+    void response
+      .json()
+      .catch(() => undefined)
+      .then((responseBody) => {
+        networkEntries.push({
+          url: response.url(),
+          status: response.status(),
+          requestHeaders: requestHeadersByUrl.get(response.url()) ?? {},
+          responseHeaders: response.headers(),
+          responseBody,
+        });
+      });
+  });
+  page.on("requestfailed", (request) => {
+    // Covers failures the 'response' event never sees (research.md §3).
+    networkEntries.push({
+      url: request.url(),
+      status: 0,
+      requestHeaders: request.headers(),
+      responseHeaders: {},
+      responseBody: { error: request.failure()?.errorText },
+    });
+  });
+
+  return {
+    getConsoleMessages: () => consoleMessages,
+    getNetworkEntries: () => networkEntries,
+  };
+}
+
+const collectEvidenceInputSchema = z.object({ stepId: z.string().nullable() });
+
+/**
+ * The Evidence Collector tool a failed step invokes (FR-005). Captures DOM/console/network —
+ * already accumulated by `createEvidenceRecorder` — plus the current DOM snapshot, redacted
+ * inside this tool before an `Evidence` object exists in that form (FR-006, SEC-002). The
+ * redirect chain is attached by the caller from `navigate.tool.ts`'s own return value, since only
+ * the navigation that produced it holds the response object `getRedirectChain` needs.
+ */
+export function createEvidenceTool(
+  page: Page,
+  recorder: EvidenceRecorder,
+  options: { credentialValue?: string; redirectChain?: string[] } = {},
+) {
+  return createTool({
+    id: "collect-evidence",
+    description: "Capture DOM, console, and network evidence for the current failed step.",
+    inputSchema: collectEvidenceInputSchema,
+    execute: async ({ stepId }) => {
+      const domHtml = await page.content();
+      const evidence = assembleEvidence({
+        stepId,
+        console: recorder.getConsoleMessages(),
+        network: recorder.getNetworkEntries(),
+        domHtml,
+        credentialValue: options.credentialValue,
+      });
+      if (options.redirectChain?.length) {
+        evidence.push({
+          id: crypto.randomUUID(),
+          stepId,
+          type: "HTTP",
+          content: JSON.stringify({ redirectChain: options.redirectChain }),
+          metadata: {},
+        });
+      }
+      return { evidence };
+    },
+  });
 }

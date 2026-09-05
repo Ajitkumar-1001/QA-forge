@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
+import { generateTestPlan } from "../mastra/agents/test-planner.agent";
+import { runQaInvestigation } from "../mastra/workflows/qa-investigation.workflow";
+import type { Report } from "../mastra/types";
+
 /**
- * CLI entrypoint (contracts/cli-contract.md). This is the skeleton (T018): argument parsing, env
- * var reads, and the top-level error-to-exit-code mapping. T040 wires in the actual workflow
- * invocation and Report printing.
+ * CLI entrypoint (contracts/cli-contract.md). T018 built the skeleton (arg parsing, env var
+ * reads, error-to-exit-code mapping); this wires in the actual test-plan generation and workflow
+ * invocation, and prints the Report per `--format text`/`--format json` (FR-012).
  */
 
 type OutputFormat = "text" | "json";
@@ -64,6 +68,42 @@ function reportError(format: OutputFormat, reason: string, message: string): voi
   }
 }
 
+/** PRD §17's per-state mockups, adapted for console output (contracts/cli-contract.md). */
+function formatReportText(objective: string, report: Report): string {
+  const lines: string[] = [`QAFORGE INVESTIGATION — ${report.result}`, "", `Objective: ${objective}`, ""];
+
+  report.steps.forEach((step, index) => {
+    lines.push(`${index + 1}. ${step.action.padEnd(30)} ${step.status}`);
+  });
+
+  if (report.result === "FAIL") {
+    const winning = report.hypotheses.find((h) => h.id === report.winningHypothesisId);
+    lines.push("", `ROOT CAUSE (confidence ${report.confidence?.toFixed(2)})`, winning?.description ?? "");
+  } else if (report.result === "INCONCLUSIVE") {
+    lines.push("", "NO CONFIRMED ROOT CAUSE — every hypothesis was ruled out:");
+    for (const hypothesis of report.hypotheses) {
+      lines.push(`  [${hypothesis.status}] ${hypothesis.description}`);
+    }
+  }
+
+  if (report.result !== "PASS") {
+    lines.push("", `Evidence: ${report.evidence.length} item(s).`);
+  }
+
+  return lines.join("\n");
+}
+
+function exitCodeForResult(result: Report["result"]): number {
+  switch (result) {
+    case "PASS":
+      return 0;
+    case "FAIL":
+      return 1;
+    case "INCONCLUSIVE":
+      return 2;
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
@@ -71,15 +111,12 @@ async function main(): Promise<void> {
     throw Object.assign(new Error("ANTHROPIC_API_KEY is not set"), { reason: "MISSING_API_KEY" });
   }
 
-  // GITHUB_TOKEN (optional) — consumed via GIT_ASKPASS by the repository investigator (T032).
-  // QAFORGE_CREDENTIAL (optional, JSON string) — consumed once by the login step (T031/T015),
-  // never logged, never stored on the Run object (FR-006, Constitution Principle IV). Read here
-  // only far enough to fail fast on malformed input; the values themselves flow to their
-  // consumers directly, not through a variable this file otherwise holds onto.
   const credentialJson = process.env.QAFORGE_CREDENTIAL;
+  let credentialValue: string | undefined;
   if (credentialJson) {
     try {
-      JSON.parse(credentialJson);
+      const parsed = JSON.parse(credentialJson) as { password?: string };
+      credentialValue = parsed.password;
     } catch {
       throw Object.assign(new Error("QAFORGE_CREDENTIAL is not valid JSON"), {
         reason: "INVALID_ARGUMENT",
@@ -87,11 +124,27 @@ async function main(): Promise<void> {
     }
   }
 
-  // T040 wires the actual workflow invocation and Report printing here.
-  void args;
-  throw Object.assign(new Error("qaforge: workflow not yet wired"), {
-    reason: "OBJECTIVE_NOT_PLANNABLE",
+  const plan = await generateTestPlan(args.objective);
+  if (!plan.plannable) {
+    throw Object.assign(new Error(plan.reason), { reason: "OBJECTIVE_NOT_PLANNABLE" });
+  }
+
+  const report = await runQaInvestigation({
+    objective: args.objective,
+    applicationUrl: args.url,
+    repoUrl: args.repo,
+    githubToken: process.env.GITHUB_TOKEN,
+    credentialValue,
+    steps: plan.steps,
+    maxIterations: args.maxSteps,
   });
+
+  if (args.format === "json") {
+    console.log(JSON.stringify(report));
+  } else {
+    console.log(formatReportText(args.objective, report));
+  }
+  process.exitCode = exitCodeForResult(report.result);
 }
 
 main().catch((error: unknown) => {

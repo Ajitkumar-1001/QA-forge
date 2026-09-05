@@ -2,7 +2,7 @@ import { Agent } from "@mastra/core/agent";
 import { plannerModel, generateValidated } from "../llm";
 import { testPlanSchema, type TestPlan } from "../schemas/test-plan.schema";
 
-const testPlannerAgent = new Agent({
+export const testPlannerAgent = new Agent({
   id: "test-planner",
   name: "Test Planner",
   instructions: [

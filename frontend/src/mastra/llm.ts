@@ -25,6 +25,9 @@ export const browserExecutionModel = anthropic("claude-sonnet-5");
  * (contracts/cli-contract.md, spec.md Edge Cases, resolved 2026-09-04 /speckit-clarify).
  */
 export class StructuredOutputFailedError extends Error {
+  /** Read by the CLI's top-level catch handler (run.ts) to pick the exit-3 reason code. */
+  readonly reason = "LLM_PROVIDER_ERROR" as const;
+
   constructor(
     message: string,
     readonly cause_?: unknown,
