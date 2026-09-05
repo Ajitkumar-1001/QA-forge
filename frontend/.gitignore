@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-typegen-only-*/
 /out/
 
 # production
@@ -41,4 +42,4 @@ yarn-error.log*
 next-env.d.ts
 
 vault-qa/
-WORKFLOW.ms
+WORKFLOW.md
