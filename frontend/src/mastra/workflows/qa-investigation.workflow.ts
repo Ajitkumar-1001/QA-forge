@@ -187,7 +187,7 @@ export async function runQaInvestigation(input: QaInvestigationInput): Promise<R
     const context = await browser.newContext();
     await installNavigationGuard(context);
     const page = await context.newPage();
-    const recorder = createEvidenceRecorder(page);
+    const recorder = createEvidenceRecorder(page, input.credentialValue);
     const consoleMessages: string[] = [];
 
     const navigateTool = createNavigateTool(page);

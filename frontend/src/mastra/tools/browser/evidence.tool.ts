@@ -111,30 +111,44 @@ export function assembleEvidence(params: {
 export interface EvidenceRecorder {
   getConsoleMessages: () => CapturedConsoleMessage[];
   getNetworkEntries: () => CapturedNetworkEntry[];
+  /** Awaits every in-flight response body parse — call before reading `getNetworkEntries()` so a
+   * slow response that's still resolving when a step fails isn't silently dropped from evidence
+   * (`/review`, 2026-09-04: `response.json()` was fire-and-forget with no way to know it was
+   * still pending, which could produce an incomplete FR-005 capture). */
+  waitForPendingCaptures: () => Promise<void>;
 }
 
 /**
  * Registers listeners on `page` to accumulate console/network events for the lifetime of the
  * page — must be attached before navigation (events before attachment are lost, research.md §3).
  * `collectEvidenceTool` below reads whatever has accumulated so far when a step fails.
+ *
+ * Redacts at capture time, inside this recorder — not only later in `assembleEvidence` — so a raw
+ * credential value never sits in the accumulated arrays even transiently (`/review`, 2026-09-04:
+ * the original version deferred all redaction to `assembleEvidence`, which satisfied FR-006's
+ * letter — nothing unredacted ever left this module — but not the architecture research.md/
+ * plan.md actually describe, and left a real footgun: any future direct reader of
+ * `getNetworkEntries()`/`getConsoleMessages()` would see raw data with no type-level signal that
+ * it's unsafe). `assembleEvidence`'s own redaction stays as defense-in-depth, not removed.
  */
-export function createEvidenceRecorder(page: Page): EvidenceRecorder {
+export function createEvidenceRecorder(page: Page, credentialValue?: string): EvidenceRecorder {
   const consoleMessages: CapturedConsoleMessage[] = [];
   const networkEntries: CapturedNetworkEntry[] = [];
   const requestHeadersByUrl = new Map<string, Record<string, string>>();
+  const pendingCaptures: Promise<void>[] = [];
 
   page.on("console", (message) => {
-    consoleMessages.push({ type: message.type(), text: message.text() });
+    consoleMessages.push({ type: message.type(), text: redactValue(message.text(), credentialValue) });
   });
   page.on("pageerror", (error) => {
     // Uncaught exceptions aren't delivered via the 'console' event (research.md §3).
-    consoleMessages.push({ type: "pageerror", text: error.message });
+    consoleMessages.push({ type: "pageerror", text: redactValue(error.message, credentialValue) });
   });
   page.on("request", (request) => {
-    requestHeadersByUrl.set(request.url(), request.headers());
+    requestHeadersByUrl.set(request.url(), redactHeaders(request.headers(), credentialValue));
   });
   page.on("response", (response) => {
-    void response
+    const capture = response
       .json()
       .catch(() => undefined)
       .then((responseBody) => {
@@ -142,17 +156,18 @@ export function createEvidenceRecorder(page: Page): EvidenceRecorder {
           url: response.url(),
           status: response.status(),
           requestHeaders: requestHeadersByUrl.get(response.url()) ?? {},
-          responseHeaders: response.headers(),
-          responseBody,
+          responseHeaders: redactHeaders(response.headers(), credentialValue),
+          responseBody: redactBody(responseBody, credentialValue),
         });
       });
+    pendingCaptures.push(capture);
   });
   page.on("requestfailed", (request) => {
     // Covers failures the 'response' event never sees (research.md §3).
     networkEntries.push({
       url: request.url(),
       status: 0,
-      requestHeaders: request.headers(),
+      requestHeaders: redactHeaders(request.headers(), credentialValue),
       responseHeaders: {},
       responseBody: { error: request.failure()?.errorText },
     });
@@ -161,6 +176,9 @@ export function createEvidenceRecorder(page: Page): EvidenceRecorder {
   return {
     getConsoleMessages: () => consoleMessages,
     getNetworkEntries: () => networkEntries,
+    waitForPendingCaptures: async () => {
+      await Promise.all(pendingCaptures);
+    },
   };
 }
 
@@ -183,6 +201,9 @@ export function createEvidenceTool(
     description: "Capture DOM, console, and network evidence for the current failed step.",
     inputSchema: collectEvidenceInputSchema,
     execute: async ({ stepId }) => {
+      // A response's body can still be parsing when a step fails right after it — without this,
+      // that network entry would silently be missing from the capture (FR-005).
+      await recorder.waitForPendingCaptures();
       const domHtml = await page.content();
       const evidence = assembleEvidence({
         stepId,

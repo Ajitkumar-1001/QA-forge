@@ -21,6 +21,19 @@ export async function isAddressAllowed(hostname: string): Promise<boolean> {
   }
 }
 
+/**
+ * Thrown when Layer A/B refuses a navigation. Read by the CLI's top-level catch handler
+ * (run.ts) to pick the exit-3 reason code (contracts/cli-contract.md's `APP_UNREACHABLE`).
+ */
+export class SsrfDeniedError extends Error {
+  readonly reason = "APP_UNREACHABLE" as const;
+
+  constructor(url: string) {
+    super(`SSRF_DENIED: refusing to navigate to ${url}`);
+    this.name = "SsrfDeniedError";
+  }
+}
+
 /** Full per-URL check: valid http(s) URL, and its hostname resolves only to allowed addresses. */
 export async function isUrlAllowed(rawUrl: string): Promise<boolean> {
   let url: URL;
@@ -61,7 +74,10 @@ export async function installNavigationGuard(context: BrowserContext): Promise<v
     });
   };
   context.on("page", (page) => {
-    void guardPage(page);
+    // Fire-and-forget: a page can close (e.g. the browser tearing down right after an initial
+    // navigation is denied) before this CDP attach completes — that's "nothing left to guard",
+    // not a real failure, so it must not surface as an unhandled rejection.
+    guardPage(page).catch(() => {});
   });
   for (const page of context.pages()) {
     await guardPage(page);
@@ -99,7 +115,7 @@ export function createNavigateTool(page: Page) {
     inputSchema: navigateInputSchema,
     execute: async ({ url }) => {
       if (!(await isUrlAllowed(url))) {
-        throw new Error(`SSRF_DENIED: refusing to navigate to ${url}`);
+        throw new SsrfDeniedError(url);
       }
       const response = await page.goto(url);
       return {
