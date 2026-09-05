@@ -1,4 +1,4 @@
-# QAForge
+<div align="center"> <h1>QA-Forge</h1> </div>  
 
 <p align="center">
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16.3-black?logo=next.js">
