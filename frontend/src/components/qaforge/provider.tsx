@@ -41,7 +41,6 @@ interface QAForgeState {
   toast: (t: Omit<ToastDef, "id">) => void;
   dismissToast: (id: string | number) => void;
   startRun: (form: { objective: string; repository: string; environment: Run["environment"] }) => void;
-  stopRun: (runId: string) => void;
   onRunStatus: (runId: string, status: Run["status"], done?: boolean) => void;
   review: (run: Run | string) => void;
   reviewFinding: (f: Finding) => void;
@@ -92,16 +91,11 @@ export function QAForgeProvider({ children }: { children: React.ReactNode }) {
   }, [go]);
 
   const onRunStatus = React.useCallback((runId: string, status: Run["status"], done?: boolean) => {
-    setRuns((rs) => rs.map((r) => (r.id === runId && r.status !== "CANCELLED" ? { ...r, status, report: done ? "FAILED" : r.report, findings: done ? 1 : 0, duration: done ? "00:17" : r.duration, elapsed: done ? "00:17" : r.elapsed } : r)));
+    setRuns((rs) => rs.map((r) => (r.id === runId ? { ...r, status, report: done ? "FAIL" : r.report, findings: done ? 1 : 0, duration: done ? "00:17" : r.duration, elapsed: done ? "00:17" : r.elapsed } : r)));
     if (done) {
       setFindings((fs) => (fs.some((f) => f.runId === runId) ? fs : [{ ...initialFindings[0], id: `F-0${413 + (counter.current - 219)}`, runId, created: "just now" }, ...fs]));
     }
   }, []);
-
-  const stopRun = React.useCallback((runId: string) => {
-    setRuns((rs) => rs.map((r) => (r.id === runId ? { ...r, status: "CANCELLED" } : r)));
-    toast({ title: "Run cancelled", description: runId });
-  }, [toast]);
 
   // The one hinge between the investigation UI and the approval UI.
   const review = React.useCallback((run: Run | string) => go("approval", { runId: typeof run === "string" ? run : run.id }), [go]);
@@ -123,8 +117,8 @@ export function QAForgeProvider({ children }: { children: React.ReactNode }) {
   }, [go, toast]);
 
   const value = React.useMemo<QAForgeState>(() => ({
-    runs, findings, approvals, toasts, go, toast, dismissToast, startRun, stopRun, onRunStatus, review, reviewFinding, approve, reject,
-  }), [runs, findings, approvals, toasts, go, toast, dismissToast, startRun, stopRun, onRunStatus, review, reviewFinding, approve, reject]);
+    runs, findings, approvals, toasts, go, toast, dismissToast, startRun, onRunStatus, review, reviewFinding, approve, reject,
+  }), [runs, findings, approvals, toasts, go, toast, dismissToast, startRun, onRunStatus, review, reviewFinding, approve, reject]);
 
   return <QAForgeContext.Provider value={value}>{children}</QAForgeContext.Provider>;
 }

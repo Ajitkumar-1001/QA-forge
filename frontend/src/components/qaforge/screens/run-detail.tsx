@@ -30,13 +30,13 @@ const LIVE_SCRIPT: LiveFrame[] = ([
   { at: 17000, doneUpTo: 4, failed: 5, stage: 5, done: true },
 ] as Omit<LiveFrame, "status">[]).map((s) => ({ ...s, status: s.done ? "FAILED" : "INVESTIGATING" }) as LiveFrame);
 
-function useLiveRun(run: Run, frozen: boolean) {
+function useLiveRun(run: Run) {
   const [phase, setPhase] = React.useState(run.live ? 0 : LIVE_SCRIPT.length - 1);
   React.useEffect(() => {
-    if (!run.live || frozen) return undefined;
+    if (!run.live) return undefined;
     const timers = LIVE_SCRIPT.map((s, i) => setTimeout(() => setPhase(i), s.at));
     return () => timers.forEach(clearTimeout);
-  }, [run.id, run.live, frozen]);
+  }, [run.id, run.live]);
   return LIVE_SCRIPT[phase];
 }
 
@@ -81,7 +81,6 @@ function ReportStrip({ run, status, finding, approval, onReview, onOpenTrace }: 
   onOpenTrace: () => void;
 }) {
   if (status === "PASSED") return <Strip><Alert tone="success" title="All steps passed." description="No investigation triggered. Nothing to approve." /></Strip>;
-  if (status === "CANCELLED") return <Strip><Alert tone="default" title="Run cancelled" description="Cancelled by Dana Okafor before the journey completed. No report was generated." /></Strip>;
   if (status === "ERROR") {
     const r = (run.reason && REASON_CODES[run.reason]) || REASON_CODES.APP_UNREACHABLE;
     return <Strip><Alert tone="destructive" title="Run ended in error — no report" description={`${run.reason}: ${r.text} ${r.detail} — ${r.retryable ? "This error is retryable." : "This error is not retryable; the objective must change."}`} /></Strip>;
@@ -131,39 +130,36 @@ function ReportStrip({ run, status, finding, approval, onReview, onOpenTrace }: 
 }
 
 export function RunDetailScreen({ runId }: { runId: string }) {
-  const { runs, findings, approvals, go, stopRun, review, onRunStatus } = useQAForge();
+  const { runs, findings, approvals, go, review, onRunStatus } = useQAForge();
   const run = runs.find((r) => r.id === runId);
   if (!run) return <div className="qf-page"><Alert tone="destructive" title="Run not found" description={`No run matches ${runId}.`} actions={<Button size="sm" variant="outline" onClick={() => go("runs")}>Back to Runs</Button>} /></div>;
-  return <RunDetail key={run.id} run={run} findings={findings} approvals={approvals} go={go} onStop={stopRun} onReview={review} onStatus={onRunStatus} />;
+  return <RunDetail key={run.id} run={run} findings={findings} approvals={approvals} go={go} onReview={review} onStatus={onRunStatus} />;
 }
 
-function RunDetail({ run, findings, approvals, go, onStop, onReview, onStatus }: {
+function RunDetail({ run, findings, approvals, go, onReview, onStatus }: {
   run: Run;
   findings: ReturnType<typeof useQAForge>["findings"];
   approvals: ReturnType<typeof useQAForge>["approvals"];
   go: ReturnType<typeof useQAForge>["go"];
-  onStop: (runId: string) => void;
   onReview: (run: Run) => void;
   onStatus: (runId: string, status: Run["status"], done?: boolean) => void;
 }) {
   const isLive = !!run.live;
-  const cancelled = run.status === "CANCELLED";
-  const live = useLiveRun(run, cancelled);
+  const live = useLiveRun(run);
   const [tab, setTab] = React.useState("findings");
   const [shot, setShot] = React.useState(5);
   const [view, setView] = React.useState("split");
-  const status = cancelled ? "CANCELLED" : isLive ? live.status : run.status;
-  const inProgress = status === "INVESTIGATING" || status === "QUEUED";
-  React.useEffect(() => { if (isLive && !cancelled) onStatus(run.id, live.status, live.done); }, [live, isLive, cancelled, onStatus, run.id]);
+  const status = isLive ? live.status : run.status;
+  const inProgress = status === "INVESTIGATING";
+  React.useEffect(() => { if (isLive) onStatus(run.id, live.status, live.done); }, [live, isLive, onStatus, run.id]);
   const errored = status === "ERROR";
   const passed = status === "PASSED";
   const showEvidence = !errored && !passed && (!isLive || live.done || live.failed !== undefined);
-  const stage = cancelled ? 0 : isLive ? live.stage : errored || passed ? 0 : 5;
+  const stage = isLive ? live.stage : errored || passed ? 0 : 5;
   const stepsList: ExecutionStepDef[] = baseSteps.map((s, i) => {
     const n = i + 1;
     if (errored) return { ...s, state: n === 1 ? "failed" : "skipped", defaultOpen: false, duration: n === 1 ? "0.4s" : undefined, detail: n === 1 ? [{ key: "Reason", value: run.reason }, { key: "Detail", value: run.reason ? REASON_CODES[run.reason].detail : undefined }] : undefined };
     if (passed) return { ...s, state: "passed", defaultOpen: false, detail: n === 5 ? [{ key: "Expected", value: "/dashboard" }, { key: "Observed", value: "/dashboard" }] : s.detail };
-    if (cancelled) return { ...s, state: n <= 2 ? "passed" : "skipped", defaultOpen: false };
     if (!isLive) return s;
     return { ...s, state: n <= live.doneUpTo ? "passed" : n === live.failed ? "failed" : n === live.active ? "active" : "pending", defaultOpen: n === live.failed && !!live.done };
   });
@@ -172,7 +168,6 @@ function RunDetail({ run, findings, approvals, go, onStop, onReview, onStatus }:
   const approval = approvals[run.id];
   const inspector = isLive && !live.done
     ? { agent: pipeline[Math.min(live.stage, 4)].name, status: "ACTIVE", objective: live.op, evidence: live.stage >= 2 ? baseInspector.evidence.slice(0, live.stage) : [], hypothesis: live.stage >= 3 ? baseInspector.hypothesis : undefined, confidence: live.stage >= 4 ? 82 : live.stage === 3 ? 61 : undefined, tools: live.stage >= 2 ? baseInspector.tools.slice(0, live.stage) : [] }
-    : cancelled ? { agent: "Browser Agent", status: "IDLE", objective: "Run cancelled by Dana Okafor. No further actions will be taken.", evidence: [], tools: [] }
     : errored ? { agent: "Browser Agent", status: "FAILED", objective: `Execution stopped before the first step. ${run.reason ? REASON_CODES[run.reason].text : ""}`, evidence: [], tools: [] }
     : passed ? { agent: "Validator", status: "COMPLETE", objective: "All planned steps passed. No investigation was triggered and no findings were raised.", evidence: baseInspector.evidence.slice(3), tools: [], confidence: 100 }
     : run.report === "INCONCLUSIVE" ? { agent: "Validator", status: "COMPLETE", objective: "Three hypotheses were formed and all three were rejected against the collected evidence. The failure is reported without a confirmed root cause.", evidence: baseInspector.evidence, hypothesis: "No surviving hypothesis.", confidence: 38, tools: baseInspector.tools.slice(0, 3) }
@@ -182,7 +177,7 @@ function RunDetail({ run, findings, approvals, go, onStop, onReview, onStatus }:
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 0" }}>
         <Tabs variant="enclosed" value={view} onValueChange={setView} items={[{ value: "split", label: "Timeline + Browser" }, { value: "timeline", label: "Timeline" }, { value: "browser", label: "Browser" }]} />
-        {isLive && !live.done && !cancelled ? <Spinner label={live.op} /> : <span className="qf-tertiary" style={{ fontSize: 12 }}>{stepsList.filter((s) => s.state === "passed").length} of {stepsList.length} steps passed</span>}
+        {isLive && !live.done ? <Spinner label={live.op} /> : <span className="qf-tertiary" style={{ fontSize: 12 }}>{stepsList.filter((s) => s.state === "passed").length} of {stepsList.length} steps passed</span>}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 16, display: "grid", gridTemplateColumns: view === "split" ? "minmax(300px, 1fr) minmax(300px, 1.05fr)" : "1fr", gap: 20, alignItems: "start" }}>
         {view !== "browser" ? <ExecutionTimeline steps={stepsList} /> : null}
@@ -215,7 +210,7 @@ function RunDetail({ run, findings, approvals, go, onStop, onReview, onStatus }:
   );
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <RunHeader run={header} onStop={() => onStop(run.id)} onRerun={() => go("new-run")} />
+      <RunHeader run={header} onRerun={() => go("new-run")} />
       {inProgress && isLive && !live.done ? null : <ReportStrip run={run} status={status} finding={primaryFinding} approval={approval} onReview={() => onReview(run)} onOpenTrace={() => setTab("trace")} />}
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", paddingTop: 12 }}>
         <Resizable
@@ -232,7 +227,7 @@ function RunDetail({ run, findings, approvals, go, onStop, onReview, onStatus }:
               first={workspace}
               second={
                 <div style={{ height: "100%", overflow: "auto", display: "flex", flexDirection: "column" }}>
-                  <div style={{ padding: 12 }}><AgentActivityPanel stage={stage} cancelled={cancelled || errored} /></div>
+                  <div style={{ padding: 12 }}><AgentActivityPanel stage={stage} cancelled={errored} /></div>
                   <AgentInspector {...inspector} style={{ borderLeft: "none", borderTop: "1px solid var(--border)", flex: 1, minHeight: 0 }} />
                 </div>
               }

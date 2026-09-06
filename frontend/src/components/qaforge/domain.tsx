@@ -104,23 +104,18 @@ export function SeverityBadge({ severity = "INFO", size = "md", showIcon = true,
 }
 
 export const RUN_STATUS: Record<string, { tone: Badge_Tone; icon?: string; pulse?: boolean; label: string }> = {
-  QUEUED: { tone: "neutral", icon: "Clock", label: "Queued" },
   PLANNING: { tone: "active", pulse: true, label: "Planning" },
   RUNNING: { tone: "active", pulse: true, label: "Running" },
   INVESTIGATING: { tone: "active", pulse: true, label: "Investigating" },
-  VALIDATING: { tone: "active", pulse: true, label: "Validating" },
-  WAITING_APPROVAL: { tone: "warning", icon: "Hand", label: "Waiting approval" },
   PASSED: { tone: "success", icon: "Check", label: "Passed" },
   FAILED: { tone: "error", icon: "CircleX", label: "Failed" },
-  BLOCKED: { tone: "warning", icon: "Ban", label: "Blocked" },
-  CANCELLED: { tone: "neutral", icon: "Square", label: "Cancelled" },
   // ERROR is a system/infra outcome (§20), added here rather than monkey-patched at runtime.
   ERROR: { tone: "error", icon: "TriangleAlert", label: "Error" },
 };
 
-export function RunStatusBadge({ status = "QUEUED", solid = false, size = "md", className = "" }: { status?: string; solid?: boolean; size?: "sm" | "md"; className?: string }) {
+export function RunStatusBadge({ status = "PLANNING", solid = false, size = "md", className = "" }: { status?: string; solid?: boolean; size?: "sm" | "md"; className?: string }) {
   const key = String(status).toUpperCase().replace(/\s+/g, "_");
-  const s = RUN_STATUS[key] || RUN_STATUS.QUEUED;
+  const s = RUN_STATUS[key] || RUN_STATUS.PLANNING;
   return <Badge tone={s.tone} solid={solid} size={size} icon={s.icon} dot={!!s.pulse} pulse={!!s.pulse} className={className}>{key.replace("_", " ")}</Badge>;
 }
 
@@ -596,7 +591,7 @@ export function RunTable({ runs = [], onOpen, selectedId, toolbar, pageSize = 10
 
 export interface RunFiltersValue { q?: string; repository?: string; environment?: string; status?: string; severity?: string; date?: string }
 
-const STATUSES = ["QUEUED", "PLANNING", "RUNNING", "INVESTIGATING", "VALIDATING", "WAITING APPROVAL", "PASSED", "FAILED", "BLOCKED", "CANCELLED"];
+const STATUSES = ["PLANNING", "RUNNING", "INVESTIGATING", "PASSED", "FAILED", "ERROR"];
 const SEVERITIES = ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"];
 
 export function RunFilters({ value = {}, onChange, repositories = [], environments = ["LOCAL", "PREVIEW", "STAGING", "PRODUCTION"], showSeverity = true, actions, className = "" }: {
@@ -632,9 +627,9 @@ export function RunFilters({ value = {}, onChange, repositories = [], environmen
   );
 }
 
-export function RunHeader({ run, onStop, onRerun, menuItems, className = "" }: { run: Run; onStop?: () => void; onRerun?: () => void; menuItems?: MenuItemDef[]; className?: string }) {
+export function RunHeader({ run, onRerun, menuItems, className = "" }: { run: Run; onRerun?: () => void; menuItems?: MenuItemDef[]; className?: string }) {
   const r = run;
-  const live = ["PLANNING", "RUNNING", "INVESTIGATING", "VALIDATING"].includes(r.status);
+  const live = ["PLANNING", "RUNNING", "INVESTIGATING"].includes(r.status);
   const items: MenuItemDef[] = menuItems || [
     { label: "Rerun", icon: "RotateCcw", onSelect: onRerun },
     { label: "Copy run link", icon: "Link" },
@@ -655,7 +650,7 @@ export function RunHeader({ run, onStop, onRerun, menuItems, className = "" }: {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {live ? <Button variant="outline" icon="Square" onClick={onStop}>Stop Run</Button> : <Button variant="outline" icon="RotateCcw" onClick={onRerun}>Rerun</Button>}
+          {!live ? <Button variant="outline" icon="RotateCcw" onClick={onRerun}>Rerun</Button> : null}
           <DropdownMenu align="end" trigger={<Button variant="outline" size="icon" aria-label="More actions"><Icon name="Ellipsis" size={16} /></Button>} items={items} />
         </div>
       </div>

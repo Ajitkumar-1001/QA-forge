@@ -4,6 +4,8 @@
 // ponytail: this is fixture data for the console UI — the mastra backend (src/mastra) is not wired
 // to it yet. Replace with real fetches when the API surface exists; the shapes below are the contract.
 
+import { z } from "zod";
+
 export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
 export type FindingStatus =
   | "OPEN"
@@ -12,46 +14,56 @@ export type FindingStatus =
   | "FIX IN PROGRESS"
   | "RESOLVED"
   | "DISMISSED";
-export type RunStatusKey =
-  | "QUEUED"
-  | "PLANNING"
-  | "RUNNING"
-  | "INVESTIGATING"
-  | "VALIDATING"
-  | "WAITING_APPROVAL"
-  | "PASSED"
-  | "FAILED"
-  | "BLOCKED"
-  | "CANCELLED"
-  | "ERROR";
-export type ReasonCode =
-  | "APP_UNREACHABLE"
-  | "BROWSER_SESSION_FAILED"
-  | "PLAN_NOT_POSSIBLE"
-  | "REPOSITORY_UNAVAILABLE";
 
-export interface Run {
-  id: string;
-  objective: string;
-  plan: string;
-  repository: string;
-  branch: string;
-  commit: string;
-  environment: "LOCAL" | "PREVIEW" | "STAGING" | "PRODUCTION";
-  status: RunStatusKey;
-  findings: number;
-  criticalFindings?: number;
-  duration: string;
-  triggeredBy: string;
-  started: string;
-  startedFull: string;
-  elapsed: string;
-  startedAt: number;
-  report?: "PASSED" | "FAILED" | "INCONCLUSIVE";
-  reason?: ReasonCode;
-  hypothesesRejected?: number;
-  live?: boolean;
-}
+// Matches src/mastra/types.ts's RunStatus exactly — these are the only statuses the real backend
+// can ever produce.
+export const runStatusSchema = z.enum([
+  "PLANNING",
+  "RUNNING",
+  "INVESTIGATING",
+  "PASSED",
+  "FAILED",
+  "ERROR",
+]);
+export type RunStatus = z.infer<typeof runStatusSchema>;
+
+// Matches src/mastra/types.ts's ErrorReason exactly.
+export const errorReasonSchema = z.enum([
+  "LIMIT_EXCEEDED",
+  "APP_UNREACHABLE",
+  "OBJECTIVE_NOT_PLANNABLE",
+  "REPO_ACCESS_DENIED",
+  "LLM_PROVIDER_ERROR",
+]);
+export type ErrorReason = z.infer<typeof errorReasonSchema>;
+
+// Matches src/mastra/types.ts's ReportResult exactly.
+export const reportResultSchema = z.enum(["PASS", "FAIL", "INCONCLUSIVE"]);
+export type ReportResult = z.infer<typeof reportResultSchema>;
+
+export const runSchema = z.object({
+  id: z.string(),
+  objective: z.string(),
+  plan: z.string(),
+  repository: z.string(),
+  branch: z.string(),
+  commit: z.string(),
+  environment: z.enum(["LOCAL", "PREVIEW", "STAGING", "PRODUCTION"]),
+  status: runStatusSchema,
+  findings: z.number(),
+  criticalFindings: z.number().optional(),
+  duration: z.string(),
+  triggeredBy: z.string(),
+  started: z.string(),
+  startedFull: z.string(),
+  elapsed: z.string(),
+  startedAt: z.number(),
+  report: reportResultSchema.optional(),
+  reason: errorReasonSchema.optional(),
+  hypothesesRejected: z.number().optional(),
+  live: z.boolean().optional(),
+});
+export type Run = z.infer<typeof runSchema>;
 
 export interface Step {
   id: string;
@@ -211,37 +223,41 @@ export interface ChartPoint {
   tone?: string;
 }
 
-export const REASON_CODES: Record<ReasonCode, { text: string; retryable: boolean; detail: string }> = {
+export const REASON_CODES: Record<ErrorReason, { text: string; retryable: boolean; detail: string }> = {
+  LIMIT_EXCEEDED: {
+    text: "The run exceeded its configured step and loop budget before completing.",
+    retryable: false,
+    detail: "NFR-001 max-steps/max-loops limit reached — objective or budget must change",
+  },
   APP_UNREACHABLE: {
     text: "The application did not respond at the environment URL.",
     retryable: true,
     detail: "NET::ERR_CONNECTION_REFUSED · https://app.qaforge.dev",
   },
-  BROWSER_SESSION_FAILED: {
-    text: "The browser session could not be started.",
-    retryable: true,
-    detail: "chromium exited before the first navigation",
-  },
-  PLAN_NOT_POSSIBLE: {
+  OBJECTIVE_NOT_PLANNABLE: {
     text: "The objective could not be turned into an executable plan.",
     retryable: false,
     detail: "{ plannable: false }",
   },
-  REPOSITORY_UNAVAILABLE: {
-    text: "The repository could not be read at the recorded commit.",
+  REPO_ACCESS_DENIED: {
+    text: "The repository could not be accessed with the supplied credentials.",
     retryable: true,
-    detail: "git: reference 9d02af1 not found",
+    detail: "GitHub API 403 · insufficient permissions for qa-forge/web",
+  },
+  LLM_PROVIDER_ERROR: {
+    text: "The language model provider failed to respond.",
+    retryable: true,
+    detail: "provider timeout after 3 retries",
   },
 };
 
 export const runs: Run[] = [
-  { id: "QF-0218", objective: "Verify login → dashboard flow", plan: "Authentication Regression", repository: "qa-forge/web", branch: "main", commit: "28fa91c", environment: "STAGING", status: "INVESTIGATING", findings: 1, criticalFindings: 0, duration: "01:42", triggeredBy: "Dana Okafor", started: "14:32", startedFull: "14:32:18", elapsed: "01:42", startedAt: 218, report: "FAILED", live: true },
+  { id: "QF-0218", objective: "Verify login → dashboard flow", plan: "Authentication Regression", repository: "qa-forge/web", branch: "main", commit: "28fa91c", environment: "STAGING", status: "INVESTIGATING", findings: 1, criticalFindings: 0, duration: "01:42", triggeredBy: "Dana Okafor", started: "14:32", startedFull: "14:32:18", elapsed: "01:42", startedAt: 218, report: "FAIL", live: true },
   { id: "QF-0217", objective: "Checkout with an expired card is rejected with a clear message", plan: "Checkout Smoke", repository: "qa-forge/web", branch: "main", commit: "28fa91c", environment: "PREVIEW", status: "PASSED", findings: 0, duration: "03:08", triggeredBy: "CI · main", started: "13:51", startedFull: "13:51:02", elapsed: "03:08", startedAt: 217 },
-  { id: "QF-0216", objective: "Password reset token is rejected after it has been used once", plan: "Authentication Regression", repository: "qa-forge/api", branch: "main", commit: "b71c0e4", environment: "STAGING", status: "FAILED", report: "FAILED", findings: 2, criticalFindings: 1, duration: "06:12", triggeredBy: "Marcus Lee", started: "12:20", startedFull: "12:20:44", elapsed: "06:12", startedAt: 216 },
+  { id: "QF-0216", objective: "Password reset token is rejected after it has been used once", plan: "Authentication Regression", repository: "qa-forge/api", branch: "main", commit: "b71c0e4", environment: "STAGING", status: "FAILED", report: "FAIL", findings: 2, criticalFindings: 1, duration: "06:12", triggeredBy: "Marcus Lee", started: "12:20", startedFull: "12:20:44", elapsed: "06:12", startedAt: 216 },
   { id: "QF-0215", objective: "Admin can export the audit log as CSV", plan: "Admin Console", repository: "qa-forge/web", branch: "release/2.4", commit: "9d02af1", environment: "PRODUCTION", status: "ERROR", reason: "APP_UNREACHABLE", findings: 0, duration: "00:14", triggeredBy: "Schedule · nightly", started: "02:00", startedFull: "02:00:00", elapsed: "00:14", startedAt: 215 },
-  { id: "QF-0214", objective: "Invalid credentials show a rate-limit message after 5 attempts", plan: "Authentication Regression", repository: "qa-forge/api", branch: "main", commit: "b71c0e4", environment: "STAGING", status: "FAILED", report: "FAILED", findings: 3, criticalFindings: 1, duration: "04:47", triggeredBy: "CI · main", started: "Yesterday", startedFull: "Yesterday 22:14", elapsed: "04:47", startedAt: 214 },
+  { id: "QF-0214", objective: "Invalid credentials show a rate-limit message after 5 attempts", plan: "Authentication Regression", repository: "qa-forge/api", branch: "main", commit: "b71c0e4", environment: "STAGING", status: "FAILED", report: "FAIL", findings: 3, criticalFindings: 1, duration: "04:47", triggeredBy: "CI · main", started: "Yesterday", startedFull: "Yesterday 22:14", elapsed: "04:47", startedAt: 214 },
   { id: "QF-0213", objective: "Team invite link works for a brand-new Google account", plan: "Onboarding", repository: "qa-forge/web", branch: "main", commit: "4fe1d90", environment: "STAGING", status: "PASSED", findings: 0, duration: "05:31", triggeredBy: "Dana Okafor", started: "Yesterday", startedFull: "Yesterday 18:02", elapsed: "05:31", startedAt: 213 },
-  { id: "QF-0212", objective: "Billing page renders invoices for annual plans", plan: "Billing", repository: "qa-forge/web", branch: "main", commit: "4fe1d90", environment: "PREVIEW", status: "CANCELLED", findings: 0, duration: "00:48", triggeredBy: "Priya Natarajan", started: "Sep 2", startedFull: "Sep 2 16:40", elapsed: "00:48", startedAt: 212 },
   { id: "QF-0211", objective: "Signup form validation errors are announced to screen readers", plan: "Accessibility", repository: "qa-forge/web", branch: "main", commit: "4fe1d90", environment: "STAGING", status: "PASSED", findings: 0, duration: "07:15", triggeredBy: "CI · main", started: "Sep 2", startedFull: "Sep 2 11:05", elapsed: "07:15", startedAt: 211 },
   { id: "QF-0210", objective: "Webhook retries back off exponentially after 5xx", plan: "Integrations", repository: "qa-forge/api", branch: "main", commit: "0c9e77b", environment: "STAGING", status: "PASSED", findings: 0, duration: "02:59", triggeredBy: "Schedule · nightly", started: "Sep 2", startedFull: "Sep 2 02:00", elapsed: "02:59", startedAt: 210 },
   { id: "QF-0209", objective: "Dashboard loads under 2s on a cold cache", plan: "Performance", repository: "qa-forge/web", branch: "main", commit: "0c9e77b", environment: "STAGING", status: "PASSED", findings: 0, duration: "01:20", triggeredBy: "CI · main", started: "Sep 1", startedFull: "Sep 1 20:12", elapsed: "01:20", startedAt: 209 },
@@ -387,7 +403,7 @@ export const agents: AgentSummary[] = [
 export const passRate: ChartPoint[] = [{ label: "Aug 29", value: 91 }, { label: "Aug 30", value: 94 }, { label: "Aug 31", value: 88 }, { label: "Sep 1", value: 90 }, { label: "Sep 2", value: 96 }, { label: "Sep 3", value: 97 }, { label: "Sep 4", value: 93 }];
 export const runsPerDay: ChartPoint[] = [{ label: "Aug 29", value: 14 }, { label: "Aug 30", value: 11 }, { label: "Aug 31", value: 6, tone: "muted" }, { label: "Sep 1", value: 17 }, { label: "Sep 2", value: 19 }, { label: "Sep 3", value: 15 }, { label: "Sep 4", value: 8 }];
 
-export const LIVE_STATUSES: RunStatusKey[] = ["QUEUED", "INVESTIGATING"];
+export const LIVE_STATUSES: RunStatus[] = ["PLANNING", "RUNNING", "INVESTIGATING"];
 
 // The drafted GitHub issue shown on the Approval Draft screen.
 export function draftIssue(f: Finding, run?: Run) {
