@@ -83,7 +83,7 @@ function ReportStrip({ run, status, finding, approval, onReview, onOpenTrace }: 
   if (status === "PASSED") return <Strip><Alert tone="success" title="All steps passed." description="No investigation triggered. Nothing to approve." /></Strip>;
   if (status === "ERROR") {
     const r = (run.reason && REASON_CODES[run.reason]) || REASON_CODES.APP_UNREACHABLE;
-    return <Strip><Alert tone="destructive" title="Run ended in error — no report" description={`${run.reason}: ${r.text} ${r.detail} — ${r.retryable ? "This error is retryable." : "This error is not retryable; the objective must change."}`} /></Strip>;
+    return <Strip><Alert tone="destructive" title="Run ended in error — no report" description={`${run.reason}: ${r.text} ${r.detail} — ${r.retryable ? "This error is retryable." : r.remediation}`} /></Strip>;
   }
   if (status !== "FAILED" || !finding) return null;
   const inconclusive = run.report === "INCONCLUSIVE";

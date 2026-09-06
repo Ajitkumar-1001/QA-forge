@@ -6,7 +6,7 @@ import { Badge, Button, Card, DataTable, type Column, Progress, Avatar, Separato
 import { Input, Select, type SelectOption } from "./forms";
 import { Tabs as EvidenceTabsBase } from "./overlays";
 import { AlertDialog, DropdownMenu, type AlertDialogProps, type MenuItemDef } from "./overlays";
-import type { ConsoleEntry, Finding, NetworkRequest, Run, SourceFile, TraceEvent } from "@/data/qaforge";
+import { LIVE_STATUSES, runStatusSchema, type ConsoleEntry, type Finding, type NetworkRequest, type Run, type RunStatus, type SourceFile, type TraceEvent } from "@/data/qaforge";
 import { cn } from "cn";
 
 // Ported from the imported design project's component bundle (components/{agents,approvals,evidence,
@@ -103,7 +103,7 @@ export function SeverityBadge({ severity = "INFO", size = "md", showIcon = true,
   return <Badge tone={s.tone} solid={!!s.solid} size={size} icon={showIcon ? s.icon : undefined} className={className}>{String(severity).toUpperCase()}</Badge>;
 }
 
-export const RUN_STATUS: Record<string, { tone: Badge_Tone; icon?: string; pulse?: boolean; label: string }> = {
+export const RUN_STATUS: Record<RunStatus, { tone: Badge_Tone; icon?: string; pulse?: boolean; label: string }> = {
   PLANNING: { tone: "active", pulse: true, label: "Planning" },
   RUNNING: { tone: "active", pulse: true, label: "Running" },
   INVESTIGATING: { tone: "active", pulse: true, label: "Investigating" },
@@ -113,8 +113,10 @@ export const RUN_STATUS: Record<string, { tone: Badge_Tone; icon?: string; pulse
   ERROR: { tone: "error", icon: "TriangleAlert", label: "Error" },
 };
 
-export function RunStatusBadge({ status = "PLANNING", solid = false, size = "md", className = "" }: { status?: string; solid?: boolean; size?: "sm" | "md"; className?: string }) {
-  const key = String(status).toUpperCase().replace(/\s+/g, "_");
+export function RunStatusBadge({ status = "PLANNING", solid = false, size = "md", className = "" }: { status?: RunStatus; solid?: boolean; size?: "sm" | "md"; className?: string }) {
+  // Normalization kept internal — RUN_STATUS is keyed by the canonical RunStatus enum, but the
+  // lookup key still needs a loosely-typed intermediate to survive the uppercase/underscore pass.
+  const key = String(status).toUpperCase().replace(/\s+/g, "_") as RunStatus;
   const s = RUN_STATUS[key] || RUN_STATUS.PLANNING;
   return <Badge tone={s.tone} solid={solid} size={size} icon={s.icon} dot={!!s.pulse} pulse={!!s.pulse} className={className}>{key.replace("_", " ")}</Badge>;
 }
@@ -591,7 +593,7 @@ export function RunTable({ runs = [], onOpen, selectedId, toolbar, pageSize = 10
 
 export interface RunFiltersValue { q?: string; repository?: string; environment?: string; status?: string; severity?: string; date?: string }
 
-const STATUSES = ["PLANNING", "RUNNING", "INVESTIGATING", "PASSED", "FAILED", "ERROR"];
+const STATUSES = runStatusSchema.options;
 const SEVERITIES = ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"];
 
 export function RunFilters({ value = {}, onChange, repositories = [], environments = ["LOCAL", "PREVIEW", "STAGING", "PRODUCTION"], showSeverity = true, actions, className = "" }: {
@@ -629,7 +631,7 @@ export function RunFilters({ value = {}, onChange, repositories = [], environmen
 
 export function RunHeader({ run, onRerun, menuItems, className = "" }: { run: Run; onRerun?: () => void; menuItems?: MenuItemDef[]; className?: string }) {
   const r = run;
-  const live = ["PLANNING", "RUNNING", "INVESTIGATING"].includes(r.status);
+  const live = LIVE_STATUSES.includes(r.status);
   const items: MenuItemDef[] = menuItems || [
     { label: "Rerun", icon: "RotateCcw", onSelect: onRerun },
     { label: "Copy run link", icon: "Link" },

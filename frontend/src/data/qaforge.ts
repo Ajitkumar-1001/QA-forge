@@ -17,6 +17,10 @@ export type FindingStatus =
 
 // Matches src/mastra/types.ts's RunStatus exactly — these are the only statuses the real backend
 // can ever produce.
+// No CANCELLED here: PRD §14/§15 specifies testRun.cancel as a real capability, but it signals
+// a D7 background-worker job via `workflowId` — infrastructure data-model.md explicitly scopes out
+// of 001 entirely. There's no in-flight job to cancel yet, so this is an interim narrowing to what
+// 001 can actually produce today, not a decision that cancellation is unwanted.
 export const runStatusSchema = z.enum([
   "PLANNING",
   "RUNNING",
@@ -223,11 +227,15 @@ export interface ChartPoint {
   tone?: string;
 }
 
-export const REASON_CODES: Record<ErrorReason, { text: string; retryable: boolean; detail: string }> = {
+// `retryable` and `remediation` per vault-qa/PRD.md §20's error-mapping table — the sole authority
+// for retry semantics (src/mastra/types.ts only names the reason codes, it carries no retryable
+// flag of its own).
+export const REASON_CODES: Record<ErrorReason, { text: string; retryable: boolean; detail: string; remediation?: string }> = {
   LIMIT_EXCEEDED: {
     text: "The run exceeded its configured step and loop budget before completing.",
     retryable: false,
     detail: "NFR-001 max-steps/max-loops limit reached — objective or budget must change",
+    remediation: "The scenario likely needs redesign — increase the step/loop budget or simplify the objective.",
   },
   APP_UNREACHABLE: {
     text: "The application did not respond at the environment URL.",
@@ -238,11 +246,13 @@ export const REASON_CODES: Record<ErrorReason, { text: string; retryable: boolea
     text: "The objective could not be turned into an executable plan.",
     retryable: false,
     detail: "{ plannable: false }",
+    remediation: "Rewrite the objective so it can be decomposed into an executable plan.",
   },
   REPO_ACCESS_DENIED: {
     text: "The repository could not be accessed with the supplied credentials.",
-    retryable: true,
+    retryable: false,
     detail: "GitHub API 403 · insufficient permissions for qa-forge/web",
+    remediation: "Re-authenticate or correct the repository URL.",
   },
   LLM_PROVIDER_ERROR: {
     text: "The language model provider failed to respond.",
