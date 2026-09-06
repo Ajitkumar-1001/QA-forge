@@ -16,7 +16,7 @@ npx tsc --noEmit  # typecheck (no dedicated package.json script exists)
 
 `dev`/`build`/`start`/`lint` are the standard `pnpm <script>` invocations listed in `package.json`.
 
-No test framework is configured — there are no test files or test script.
+Test framework is vitest (`pnpm test`; `pnpm test:watch`, `pnpm test:coverage`) — tests live under `tests/unit/` and `tests/integration/`.
 
 Package manager is pnpm (`packageManager: pnpm@11.15.1`); don't use npm/yarn lockfiles.
 
