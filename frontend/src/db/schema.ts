@@ -14,7 +14,7 @@
 // only for the Better Auth tables above; hand-maintain GithubConnection alongside it.
 
 import { relations } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, index, unique } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -78,7 +78,15 @@ export const account = pgTable(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
-  (table) => [index("account_userId_idx").on(table.userId)],
+  (table) => [
+    index("account_userId_idx").on(table.userId),
+    // FR-014: without this, two near-simultaneous first-sign-ins for the same new GitHub
+    // identity aren't guaranteed to "re-resolve to the row the first attempt committed" (spec.md
+    // Edge Cases) — data-model.md claimed this constraint already existed ("enforced by Better
+    // Auth's adapter"); it didn't. The generated schema (T006) never added it. Found and fixed
+    // during T019/T022 implementation, not merely documented — see data-model.md's correction.
+    unique("account_providerId_accountId_unique").on(table.providerId, table.accountId),
+  ],
 );
 
 export const verification = pgTable(
@@ -141,3 +149,5 @@ export const githubConnectionRelations = relations(githubConnection, ({ one }) =
     references: [user.id],
   }),
 }));
+
+export type GithubConnection = typeof githubConnection.$inferSelect;

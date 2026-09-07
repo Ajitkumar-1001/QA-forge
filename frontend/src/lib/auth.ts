@@ -164,36 +164,93 @@ function withHashedSessionToken(createAdapter: AdapterFactory): AdapterFactory {
 
 // ---------------------------------------------------------------------------
 
-export const auth = betterAuth({
-  database: withHashedSessionToken(
-    drizzleAdapter(db, {
-      provider: "pg",
-      schema,
-      // FR-014: first-sign-in User+Account creation needs a real DB transaction —
-      // Better Auth's own adapter default is `false` (sequential, non-transactional).
-      transaction: true,
-    }),
-  ),
-  socialProviders: {
-    // FR-001: GitHub OAuth is the only sign-in method — no other provider is configured.
-    github: {
-      clientId: process.env.GITHUB_CLIENT_ID ?? "",
-      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
+// SEC-002: strip every OAuth-token-shaped field before an `account` row is
+// written — GitHub's sign-in token is not persisted at all. This isn't only
+// the first-sign-up path (`create`): a *returning* sign-in calls
+// `internalAdapter.updateAccount` with fresh tokens whenever
+// `account.updateAccountOnSignIn` is enabled (Better Auth's own default) —
+// stripping only on `create` leaks the raw token on every second-and-later
+// sign-in. `updateAccountOnSignIn: false` below is the primary fix (the
+// update call never happens, since we never sync tokens we don't keep
+// anyway); this hook is defense-in-depth for `update` too, and for
+// `linkAccount` (also routed through `create`).
+async function stripOAuthTokenFields<T extends Record<string, unknown>>(account: T) {
+  return {
+    data: {
+      ...account,
+      accessToken: undefined,
+      refreshToken: undefined,
+      idToken: undefined,
+      accessTokenExpiresAt: undefined,
+      refreshTokenExpiresAt: undefined,
     },
-  },
-  session: {
-    expiresIn: 60 * 60 * 24 * 30, // NFR-001: 30 days.
-    updateAge: 60 * 60 * 24, // NFR-001: sliding refresh, at most once per 24h (Better Auth's own default — set explicitly for traceability to the requirement).
-  },
-  // SEC-010: explicit, not left at a library default. Set via TRUSTED_ORIGINS
-  // (comma-separated) once T004's fixed staging/production domains exist —
-  // empty until then, which fails closed rather than trusting nothing/everything.
-  trustedOrigins: (process.env.TRUSTED_ORIGINS ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
-  plugins: [nextCookies()],
-});
+  };
+}
+
+/**
+ * Extracted so tests (T019/T020) can construct an equivalent `betterAuth()`
+ * instance against a swapped-in adapter (Better Auth's in-memory adapter —
+ * no live Postgres exists to test against here) without duplicating this
+ * config and risking it drifting from what actually ships.
+ */
+export function buildAuthOptions({ database }: { database: ReturnType<typeof drizzleAdapter> }) {
+  return {
+    database,
+    socialProviders: {
+      // FR-001: GitHub OAuth is the only sign-in method — no other provider is configured.
+      github: {
+        clientId: process.env.GITHUB_CLIENT_ID ?? "",
+        clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
+      },
+    },
+    account: {
+      // See stripOAuthTokenFields above — we never sync a token we don't persist.
+      updateAccountOnSignIn: false,
+    },
+    databaseHooks: {
+      account: {
+        create: { before: stripOAuthTokenFields },
+        update: { before: stripOAuthTokenFields },
+      },
+    },
+    session: {
+      expiresIn: 60 * 60 * 24 * 30, // NFR-001: 30 days.
+      updateAge: 60 * 60 * 24, // NFR-001: sliding refresh, at most once per 24h (Better Auth's own default — set explicitly for traceability to the requirement).
+    },
+    // SEC-010: explicit, not left at a library default. Set via TRUSTED_ORIGINS
+    // (comma-separated) once T004's fixed staging/production domains exist —
+    // empty until then, which fails closed rather than trusting nothing/everything.
+    trustedOrigins: (process.env.TRUSTED_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+    // UX-003: explicit, not left at a library default (same spirit as SEC-010) — every
+    // callback failure redirects to the sign-in page's own `?error=` handling
+    // (src/app/sign-in/page.tsx), which selects copy from a closed set rather than
+    // rendering this raw code.
+    onAPIError: {
+      errorURL: "/sign-in",
+    },
+    plugins: [nextCookies()],
+  };
+}
+
+export const auth = betterAuth(
+  buildAuthOptions({
+    database: withHashedSessionToken(
+      drizzleAdapter(db, {
+        provider: "pg",
+        schema,
+        // FR-014: first-sign-in User+Account creation needs a real DB transaction —
+        // Better Auth's own adapter default is `false` (sequential, non-transactional).
+        // Better Auth's own OAuth sign-up flow (oauth2/link-account.mjs) already wraps
+        // User+Account creation in `runWithTransaction` — this flag is what makes that
+        // a real transaction instead of a no-op; no extra hook needed for FR-014 itself.
+        transaction: true,
+      }),
+    ),
+  }),
+);
 
 /**
  * FR-015: server-only session-resolution primitive. A future tRPC procedure's

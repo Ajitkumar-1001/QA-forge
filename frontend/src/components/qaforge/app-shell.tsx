@@ -43,11 +43,25 @@ function currentScreen(pathname: string): { screen: string; runId?: string } {
   return { screen: segs[0] };
 }
 
+// UX-001: the auth feature's own screens are a single-purpose landing with no sidebar/nav
+// chrome — the root layout wraps every route in AppShell unconditionally (app/layout.tsx), and
+// restructuring that into route groups so /sign-in could opt out at the layout level would move
+// every existing route in this file's directory tree, far outside this feature's scope. This is
+// the narrow alternative: AppShell already branches on pathname (currentScreen below) for
+// per-route titles, so branching here too is the same pattern, not a new one.
+const SHELL_LESS_ROUTES = ["/sign-in"];
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { runs, findings, approvals, toasts, go, dismissToast } = useQAForge();
+  // Every hook this component ever calls must run on every render regardless of pathname (Rules
+  // of Hooks) — the shell-less branch below returns only after all of them have run.
   const isMobile = useIsMobile();
   const [cmdOpen, setCmdOpen] = React.useState(false);
+
+  if (SHELL_LESS_ROUTES.includes(pathname)) {
+    return <>{children}</>;
+  }
 
   const { screen, runId } = currentScreen(pathname);
   const run = runId ? runs.find((r) => r.id === runId) : undefined;

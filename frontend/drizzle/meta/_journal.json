@@ -8,6 +8,13 @@
       "when": 1788754532774,
       "tag": "0000_handy_lockjaw",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788765772698,
+      "tag": "0001_loud_junta",
+      "breakpoints": true
     }
   ]
 }
