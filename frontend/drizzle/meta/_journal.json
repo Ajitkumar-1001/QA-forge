@@ -15,6 +15,13 @@
       "when": 1788765772698,
       "tag": "0001_loud_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788892408421,
+      "tag": "0002_wide_the_twelve",
+      "breakpoints": true
     }
   ]
 }
