@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TestRun } from "@/db/schema";
+import type { Report } from "@/mastra/types";
 
 vi.mock("@/db/client", async () => {
   const { PGlite } = await import("@electric-sql/pglite");
@@ -92,6 +93,52 @@ describe("startRunForCaller / recordRunResultForCaller / getRunForCaller — FR-
     };
     expect(await getRunForCaller("user-b", started.run.id)).toBeNull();
     expect(await getRunForCaller("user-b", "no-such-run")).toBeNull();
+  });
+
+  it("a dangling evidenceRef is dropped, not fatal — the rest of the report still persists", async () => {
+    const started = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "key-1" })) as {
+      run: TestRun;
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const report: Report = {
+      result: "FAIL",
+      steps: [],
+      evidence: [{ id: "ev-1", stepId: null, type: "CONSOLE", content: "login failed", metadata: {} }],
+      hypotheses: [
+        {
+          id: "hyp-1",
+          status: "SUPPORTED",
+          description: "The login handler rejects valid credentials",
+          confidence: 0.9,
+          // "ev-ghost" has no matching row in `evidence` above — must not roll back the
+          // transaction and lose the whole report (the FK would otherwise reject it).
+          evidenceLinks: [
+            { evidenceRef: "ev-1", role: "SUPPORTING" },
+            { evidenceRef: "ev-ghost", role: "SUPPORTING" },
+          ],
+          checks: [],
+        },
+      ],
+      winningHypothesisId: "hyp-1",
+      confidence: 0.9,
+    };
+
+    const result = await recordRunResultForCaller("user-a", started.run.id, {
+      status: "FAILED",
+      errorReason: null,
+      modelCalls: [],
+      report,
+    });
+    expect(result).toEqual({ ok: true, alreadyRecorded: false });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ev-ghost"));
+
+    const links = await db.query.hypothesisEvidence.findMany({
+      where: (t, { eq }) => eq(t.hypothesisId, "hyp-1"),
+    });
+    expect(links).toEqual([expect.objectContaining({ hypothesisId: "hyp-1", evidenceId: "ev-1" })]);
+
+    warnSpy.mockRestore();
   });
 });
 
