@@ -1,8 +1,9 @@
+import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { decrypt, encrypt, hashSessionToken } from "@/lib/crypto";
 
 beforeEach(() => {
-  process.env.AUTH_ENCRYPTION_KEY = require("node:crypto").randomBytes(32).toString("base64");
+  process.env.AUTH_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 });
 
 describe("encrypt/decrypt — AEAD for GithubConnection.patReference (SEC-002)", () => {

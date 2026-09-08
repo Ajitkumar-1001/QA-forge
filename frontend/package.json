@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@better-auth/cli": "^1.4.21",
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",

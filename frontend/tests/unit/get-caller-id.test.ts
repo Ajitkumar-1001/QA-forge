@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 // betterAuth() construction needs these to even build the instance; the actual DB is never hit
@@ -7,7 +8,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 process.env.DATABASE_URL ??= "postgres://x:x@localhost:5432/x";
 process.env.GITHUB_CLIENT_ID ??= "x";
 process.env.GITHUB_CLIENT_SECRET ??= "x";
-process.env.AUTH_ENCRYPTION_KEY ??= require("node:crypto").randomBytes(32).toString("base64");
+process.env.AUTH_ENCRYPTION_KEY ??= randomBytes(32).toString("base64");
 
 let getCallerId: typeof import("@/lib/auth").getCallerId;
 let auth: typeof import("@/lib/auth").auth;
