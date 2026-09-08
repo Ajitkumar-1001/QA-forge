@@ -1,4 +1,3 @@
-/* QAForge domain compositions (design.md §13–§36, §46). Class prefix qf-. Ported verbatim from the imported Claude Design project. */
 .qf-shell{display:flex;height:100%;min-height:0;background:var(--background);color:var(--text-primary)}
 .qf-shell__main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
 .qf-shell__page{flex:1;overflow:auto;min-height:0}
@@ -16,7 +15,7 @@
 .qf-page-header__description{margin:0;font-size:var(--text-body-size);color:var(--text-secondary);line-height:1.5}
 .qf-page-header__actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .qf-page-header--compact .qf-page-header__title{font-size:var(--text-h2-size)}
-/* Runs */
+
 .qf-run-header{display:flex;flex-direction:column;gap:12px;padding:16px 24px;border-bottom:1px solid var(--border);background:var(--surface-1)}
 .qf-run-header__top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .qf-run-header__id{font-family:var(--font-mono);font-size:var(--text-small-size);color:var(--text-secondary)}
@@ -62,7 +61,7 @@
 .qf-run-filters__search{width:240px}
 .qf-run-filters__spacer{flex:1}
 .qf-run-filters__reset{color:var(--text-tertiary)}
-/* Agents */
+
 .qf-agent-inspector{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--surface-1);border-left:1px solid var(--border)}
 .qf-agent-inspector__header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
 .qf-agent-inspector__agent{display:flex;align-items:center;gap:10px;min-width:0}
@@ -100,7 +99,7 @@
 .qf-trace__row--failed .qf-trace__event{color:var(--text-primary)}
 .qf-trace__row--failed .qf-trace__agent .qf-icon{color:var(--error)}
 .qf-trace__row--active .qf-trace__agent .qf-icon{color:var(--blue-500)}
-/* Evidence */
+
 .qf-evidence-tabs{display:flex;flex-direction:column;min-height:0;background:var(--background)}
 .qf-evidence-tabs .qf-tabs__list{padding:0 16px}
 .qf-evidence-tabs .qf-tabs__content{padding:0;min-height:0;overflow:auto}
@@ -167,7 +166,7 @@
 .qf-evidence-ref--4xx .qf-evidence-ref__meta{color:var(--warning)}
 .qf-evidence-ref--5xx .qf-evidence-ref__meta{color:var(--error)}
 .qf-evidence-list{display:flex;flex-wrap:wrap;gap:6px}
-/* Findings */
+
 .qf-finding{display:flex;flex-direction:column;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md)}
 .qf-finding--critical{border-color:color-mix(in srgb,var(--error) 45%,transparent)}
 .qf-finding__header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 0}
@@ -202,7 +201,7 @@
 .qf-confidence--inline{flex-direction:row;align-items:center;gap:10px}
 .qf-confidence--inline .qf-confidence__meter{width:72px;flex-shrink:0}
 .qf-confidence--inline .qf-confidence__pct{font-size:var(--text-small-size);font-weight:500}
-/* Approvals */
+
 .qf-approval__repo{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:12.5px;color:var(--text-primary)}
 .qf-approval__repo .qf-icon{color:var(--text-tertiary)}
 .qf-approval__field{display:flex;flex-direction:column;gap:4px}
@@ -212,12 +211,12 @@
 .qf-approval__list li{display:flex;align-items:center;gap:8px}
 .qf-approval__list li .qf-icon{color:var(--success)}
 .qf-risk{display:inline-flex;align-items:center;gap:5px}
-/* Policies */
+
 .qf-policy-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:16px;padding:10px 0;border-bottom:1px solid var(--border-subtle)}
 .qf-policy-row:last-child{border-bottom:0}
 .qf-policy-row__action{font-size:var(--text-body-size);color:var(--text-primary)}
 .qf-policy-row__hint{font-size:var(--text-caption-size);color:var(--text-tertiary)}
-/* Metric card */
+
 .qf-metric{display:flex;flex-direction:column;gap:6px;padding:14px 16px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);min-width:0}
 .qf-metric__label{font-size:var(--text-caption-size);color:var(--text-secondary);display:flex;align-items:center;justify-content:space-between;gap:8px}
 .qf-metric__label .qf-icon{color:var(--text-tertiary)}

@@ -2,11 +2,6 @@ import { describe, expect, it } from "vitest";
 import { isPlanWellFormed, checkStepCountLimit, MAX_PLANNED_STEPS } from "@/mastra/agents/test-planner.agent";
 import type { TestPlan } from "@/mastra/schemas/test-plan.schema";
 
-/**
- * T052, 2026-09-04 /speckit-converge (CRITICAL, Constitution I) — plannability was previously a
- * bare echo of the model's own `plannable` claim. `isPlanWellFormed` is the deterministic
- * re-derivation; these tests exercise it directly (no LLM needed — a pure function).
- */
 const STEP = {
   position: 0,
   action: "Click the login button",
@@ -43,8 +38,6 @@ describe("isPlanWellFormed", () => {
   });
 });
 
-/** T060, 2026-09-04 /speckit-converge (NFR-001) — "total steps" was previously entirely
- * unenforced. */
 describe("checkStepCountLimit", () => {
   it("does not throw at or under the limit", () => {
     expect(() => checkStepCountLimit(MAX_PLANNED_STEPS)).not.toThrow();

@@ -3,8 +3,6 @@
 @import "../styles/qaforge/ui.css";
 @import "../styles/qaforge/qaforge.css";
 
-/* Exposes qaforge tokens (src/styles/qaforge/tokens.css) as Tailwind utilities,
-   e.g. bg-card, border-border, text-muted-foreground. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -39,7 +37,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  /* QAForge status/tone system (Badge/Alert/Progress tones) */
+
   --color-status-neutral: var(--status-neutral);
   --color-status-neutral-muted: var(--status-neutral-muted);
   --color-status-active: var(--status-active);

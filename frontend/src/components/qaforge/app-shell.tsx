@@ -8,12 +8,6 @@ import { useQAForge, LIVE_STATUSES } from "./provider";
 import { MobileReview } from "./screens/mobile";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
-// Ported from the imported design project's app/app.jsx — the shell (sidebar + top bar + command
-// palette + toasts) that wraps every route. Screens/routes derive from the real pathname instead
-// of the source's hash-based `route` state; the mobile split (<720px) is now the design system's
-// documented "review/approve subset", not the prototype's manual Desktop/Mobile toggle button
-// (dropped — that button existed only so a demo on a desktop browser could preview the phone layout).
-
 const TITLES: Record<string, string> = {
   dashboard: "Overview", runs: "Runs", "new-run": "New QA Run", "test-plans": "Test Plans",
   findings: "Findings", repositories: "Repositories", environments: "Environments",
@@ -43,19 +37,12 @@ function currentScreen(pathname: string): { screen: string; runId?: string } {
   return { screen: segs[0] };
 }
 
-// UX-001: the auth feature's own screens are a single-purpose landing with no sidebar/nav
-// chrome — the root layout wraps every route in AppShell unconditionally (app/layout.tsx), and
-// restructuring that into route groups so /sign-in could opt out at the layout level would move
-// every existing route in this file's directory tree, far outside this feature's scope. This is
-// the narrow alternative: AppShell already branches on pathname (currentScreen below) for
-// per-route titles, so branching here too is the same pattern, not a new one.
 const SHELL_LESS_ROUTES = ["/sign-in"];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { runs, findings, approvals, toasts, go, dismissToast } = useQAForge();
-  // Every hook this component ever calls must run on every render regardless of pathname (Rules
-  // of Hooks) — the shell-less branch below returns only after all of them have run.
+
   const isMobile = useIsMobile();
   const [cmdOpen, setCmdOpen] = React.useState(false);
 
@@ -82,9 +69,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <div style={{ height: "100vh", display: "flex", justifyContent: "center", background: "var(--background)" }}>
         <div style={{ width: "min(100%, 420px)", height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
-          {/* ponytail: there's no real "switch to desktop" on a genuinely narrow viewport (the
-              source's Desktop/Mobile toggle was a demo-only device switcher, dropped here) — this
-              just takes the reader to the dashboard route within the mobile-reduced UI. */}
+
           <MobileReview onSwitchToDesktop={() => go("dashboard")} />
         </div>
         <ToastRegion toasts={toasts} onDismiss={dismissToast} />

@@ -8,8 +8,6 @@ import { PageHeader, AgentStatus, RunStatusBadge, SeverityBadge, ConfidenceMeter
 import { useQAForge, LIVE_STATUSES } from "../provider";
 import { agents, environments, passRate, plans, runsPerDay } from "@/data/qaforge";
 
-// Ported from the imported design project's app/screens/dashboard.jsx.
-
 function Metric({ label, value, delta, tone, icon }: { label: string; value: React.ReactNode; delta?: string; tone?: "up" | "down" | "warn"; icon: string }) {
   return (
     <div className="qf-metric">

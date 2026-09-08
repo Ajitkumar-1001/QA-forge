@@ -3,27 +3,15 @@ import { createTool } from "@mastra/core/tools";
 import type { Page } from "playwright";
 import type { Evidence, EvidenceType } from "../../types";
 
-// Exported for actions.tool.ts's T065 fix (2026-09-04 /speckit-converge) — the same keyword
-// pattern used to decide what to redact is reused there to decide what to substitute the real
-// credential value into, so both concerns share one canonical definition.
 export const CREDENTIAL_LIKE_KEY = /pass(word)?|token|secret|api[-_]?key|auth|credential/i;
 const CREDENTIAL_HEADER_NAMES = new Set(["authorization", "cookie", "set-cookie"]);
 const REDACTED = "[REDACTED]";
 
-/**
- * Masks the literal supplied-credential value wherever it appears in a string — headers, bodies,
- * or URLs (SEC-002). A no-op when no credential was supplied for this run.
- */
 export function redactValue(value: string, credentialValue?: string): string {
   if (!credentialValue) return value;
   return value.split(credentialValue).join(REDACTED);
 }
 
-/**
- * Redacts header *values* for credential-bearing headers (`Authorization`/`Cookie`/`Set-Cookie`)
- * and the literal credential value in any other header — names and presence are preserved
- * (FR-006).
- */
 export function redactHeaders(
   headers: Record<string, string>,
   credentialValue?: string,
@@ -37,11 +25,6 @@ export function redactHeaders(
   return result;
 }
 
-/**
- * Redacts request/response body fields whose *name* matches a credential-like pattern (SEC-002,
- * resolved 2026-09-04 `/speckit-clarify`) — case-insensitive keyword match on the key, not a fixed
- * exact-name allow-list — plus the literal credential value wherever it appears in a body value.
- */
 export function redactBody(body: unknown, credentialValue?: string): unknown {
   if (typeof body === "string") return redactValue(body, credentialValue);
   if (Array.isArray(body)) return body.map((item) => redactBody(item, credentialValue));
@@ -66,18 +49,10 @@ export interface CapturedNetworkEntry {
   requestHeaders: Record<string, string>;
   responseHeaders: Record<string, string>;
   responseBody?: unknown;
-  /** Elapsed ms between request start and response/failure (T055, 2026-09-04
-   * /speckit-converge — FR-005 names "timing information" as a required capture; undefined when
-   * the matching request-start timestamp wasn't recorded (e.g. a response with no prior 'request'
-   * event in this capture window). */
+
   durationMs?: number;
 }
 
-/**
- * Turns raw captured console/network/DOM records into `Evidence` objects, redacted before the
- * object exists in this form — never post-hoc (data-model.md's write-time-invariant note). Empty
- * capture categories produce no Evidence entries.
- */
 export function assembleEvidence(params: {
   stepId: string | null;
   console?: CapturedConsoleMessage[];
@@ -120,32 +95,15 @@ export function assembleEvidence(params: {
 export interface EvidenceRecorder {
   getConsoleMessages: () => CapturedConsoleMessage[];
   getNetworkEntries: () => CapturedNetworkEntry[];
-  /** Awaits every in-flight response body parse — call before reading `getNetworkEntries()` so a
-   * slow response that's still resolving when a step fails isn't silently dropped from evidence
-   * (`/review`, 2026-09-04: `response.json()` was fire-and-forget with no way to know it was
-   * still pending, which could produce an incomplete FR-005 capture). */
+
   waitForPendingCaptures: () => Promise<void>;
 }
 
-/**
- * Registers listeners on `page` to accumulate console/network events for the lifetime of the
- * page — must be attached before navigation (events before attachment are lost, research.md §3).
- * `collectEvidenceTool` below reads whatever has accumulated so far when a step fails.
- *
- * Redacts at capture time, inside this recorder — not only later in `assembleEvidence` — so a raw
- * credential value never sits in the accumulated arrays even transiently (`/review`, 2026-09-04:
- * the original version deferred all redaction to `assembleEvidence`, which satisfied FR-006's
- * letter — nothing unredacted ever left this module — but not the architecture research.md/
- * plan.md actually describe, and left a real footgun: any future direct reader of
- * `getNetworkEntries()`/`getConsoleMessages()` would see raw data with no type-level signal that
- * it's unsafe). `assembleEvidence`'s own redaction stays as defense-in-depth, not removed.
- */
 export function createEvidenceRecorder(page: Page, credentialValue?: string): EvidenceRecorder {
   const consoleMessages: CapturedConsoleMessage[] = [];
   const networkEntries: CapturedNetworkEntry[] = [];
   const requestHeadersByUrl = new Map<string, Record<string, string>>();
-  // T055, 2026-09-04 /speckit-converge (FR-005): request-start timestamps, keyed by URL, so the
-  // matching 'response'/'requestfailed' event can compute an elapsed duration.
+
   const requestStartByUrl = new Map<string, number>();
   const pendingCaptures: Promise<void>[] = [];
 
@@ -153,7 +111,7 @@ export function createEvidenceRecorder(page: Page, credentialValue?: string): Ev
     consoleMessages.push({ type: message.type(), text: redactValue(message.text(), credentialValue) });
   });
   page.on("pageerror", (error) => {
-    // Uncaught exceptions aren't delivered via the 'console' event (research.md §3).
+
     consoleMessages.push({ type: "pageerror", text: redactValue(error.message, credentialValue) });
   });
   page.on("request", (request) => {
@@ -165,9 +123,7 @@ export function createEvidenceRecorder(page: Page, credentialValue?: string): Ev
     const durationMs = startedAt !== undefined ? Date.now() - startedAt : undefined;
     const capture = response
       .json()
-      // T057, 2026-09-04 /speckit-converge (FR-005): a non-JSON failure response (an HTML error
-      // page, plain text) previously became `undefined` with no fallback — fall back to the raw
-      // text body before giving up.
+
       .catch(() => response.text().catch(() => undefined))
       .then((responseBody) => {
         networkEntries.push({
@@ -182,7 +138,7 @@ export function createEvidenceRecorder(page: Page, credentialValue?: string): Ev
     pendingCaptures.push(capture);
   });
   page.on("requestfailed", (request) => {
-    // Covers failures the 'response' event never sees (research.md §3).
+
     const startedAt = requestStartByUrl.get(request.url());
     networkEntries.push({
       url: request.url(),
@@ -205,13 +161,6 @@ export function createEvidenceRecorder(page: Page, credentialValue?: string): Ev
 
 const collectEvidenceInputSchema = z.object({ stepId: z.string().nullable() });
 
-/**
- * The Evidence Collector tool a failed step invokes (FR-005). Captures DOM/console/network —
- * already accumulated by `createEvidenceRecorder` — plus the current DOM snapshot, redacted
- * inside this tool before an `Evidence` object exists in that form (FR-006, SEC-002). The
- * redirect chain is attached by the caller from `navigate.tool.ts`'s own return value, since only
- * the navigation that produced it holds the response object `getRedirectChain` needs.
- */
 export function createEvidenceTool(
   page: Page,
   recorder: EvidenceRecorder,
@@ -222,8 +171,7 @@ export function createEvidenceTool(
     description: "Capture DOM, console, and network evidence for the current failed step.",
     inputSchema: collectEvidenceInputSchema,
     execute: async ({ stepId }) => {
-      // A response's body can still be parsing when a step fails right after it — without this,
-      // that network entry would silently be missing from the capture (FR-005).
+
       await recorder.waitForPendingCaptures();
       const domHtml = await page.content();
       const evidence = assembleEvidence({
@@ -233,11 +181,7 @@ export function createEvidenceTool(
         domHtml,
         credentialValue: options.credentialValue,
       });
-      // T056, 2026-09-04 /speckit-converge (FR-005): the current URL previously landed only on
-      // Step.observed (and only on one of the two failure paths) — never in the Evidence bundle
-      // the investigation LLM prompts actually consume. Captured here unconditionally, since this
-      // tool runs on every step failure regardless of which branch (criterion-false or exception)
-      // triggered it.
+
       evidence.push({
         id: crypto.randomUUID(),
         stepId,
@@ -246,9 +190,7 @@ export function createEvidenceTool(
         metadata: {},
       });
       if (options.redirectChain?.length) {
-        // T063, 2026-09-04 /speckit-converge (SEC-002): every other evidence path in this file
-        // redacts before pushing — this one didn't, despite a redirect chain being a list of URLs
-        // that can carry the literal credential value (e.g. a query-string token).
+
         const redactedChain = options.redirectChain.map((url) => redactValue(url, options.credentialValue));
         evidence.push({
           id: crypto.randomUUID(),

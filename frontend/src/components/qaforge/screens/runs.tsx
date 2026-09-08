@@ -5,8 +5,6 @@ import { Badge, Button, Empty } from "../primitives";
 import { PageHeader, RunTable, RunFilters, type RunFiltersValue } from "../domain";
 import { useQAForge } from "../provider";
 
-// Ported from the imported design project's app/screens/runs.jsx.
-
 export function RunsScreen() {
   const { go, runs } = useQAForge();
   const [filters, setFilters] = React.useState<RunFiltersValue>({});

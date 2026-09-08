@@ -6,15 +6,6 @@ export interface FixtureServer {
   close: () => Promise<void>;
 }
 
-/**
- * Local HTTP fixture server for integration tests (research.md §1's testing strategy — real
- * chromium against a local `node:http` server, not a mocked network). Exposes:
- *  - `/redirect/:n` → a chain of `n` 302 hops ending at `/ok` — for SEC-001's per-redirect-hop
- *    SSRF re-check test.
- *  - `/credential-body` → a JSON response body containing a credential-shaped field — for
- *    SEC-002's redaction test.
- *  - `/ok` → a plain 200 page.
- */
 export function startFixtureServer(): Promise<FixtureServer> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {

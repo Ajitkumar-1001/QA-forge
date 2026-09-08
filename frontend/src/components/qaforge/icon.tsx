@@ -77,9 +77,6 @@ import {
   X,
 } from "lucide-react";
 
-// lucide-react 1.x dropped brand/logo glyphs (no `Github` export) — the GitHub mark is drawn
-// below from the official Simple Icons path so `icon="Github"` keeps working everywhere it's
-// used (repo references, issue-creation actions). No other brand mark is used by any screen.
 function GithubMark({ size = 16, className = "", ...rest }: LucideProps) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} {...rest}>
@@ -88,8 +85,6 @@ function GithubMark({ size = 16, className = "", ...rest }: LucideProps) {
   );
 }
 
-// ponytail: curated map (not `import * as icons`) so unused glyphs tree-shake out of the bundle.
-// Extend when a screen needs a name that isn't here yet — a missing name falls back to Circle.
 const ICONS: Record<string, React.ComponentType<LucideProps>> = {
   Activity,
   Archive,
@@ -172,7 +167,6 @@ export interface IconProps extends Omit<LucideProps, "ref"> {
   name: string;
 }
 
-/** Lucide glyph (design.md §11), backed by the curated ICONS map above instead of the design system's runtime CDN loader. */
 export function Icon({ name, size = 16, className = "", ...rest }: IconProps) {
   const Glyph = ICONS[name] ?? Circle;
   return <Glyph size={size} className={`qf-icon ${className}`.trim()} data-icon={name} {...rest} />;

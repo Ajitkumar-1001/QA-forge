@@ -8,8 +8,6 @@ import { FindingCard, FindingTable, PageHeader } from "../domain";
 import { useQAForge } from "../provider";
 import type { Finding } from "@/data/qaforge";
 
-// Ported from the imported design project's app/screens/findings.jsx.
-
 export function FindingsScreen() {
   const { go, findings, reviewFinding } = useQAForge();
   const [sev, setSev] = React.useState("all");

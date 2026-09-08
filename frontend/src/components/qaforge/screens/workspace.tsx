@@ -9,8 +9,6 @@ import { ActionRiskBadge, AgentStatus, AgentTrace, Card, PageHeader } from "../d
 import { useQAForge } from "../provider";
 import { agents, environments, plans, repositories as initialRepositories, trace, type Environment, type Plan, type Repository } from "@/data/qaforge";
 
-// Ported from the imported design project's app/screens/workspace.jsx.
-
 export function TestPlansScreen() {
   const { go, toast } = useQAForge();
   const [openPlan, setOpenPlan] = React.useState<Plan | null>(null);

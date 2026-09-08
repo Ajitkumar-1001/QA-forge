@@ -44,24 +44,6 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 
-// Adapter layer (see primitives.tsx for the established pattern): same exports/props as the
-// original qf-* overlays so screens don't change — internals now render real shadcn/ui (Base UI
-// / cmdk flavor) components instead of qf-* CSS classes. Dialog/Sheet/Tabs compose shadcn's
-// dialog.tsx/sheet.tsx/tabs.tsx building blocks (with a couple of exact-token colors — the modal
-// scrim, the sheet's darker surface — pulled in via arbitrary-value `var(--…)` since no Tailwind
-// utility exposes them); DropdownMenu/Command adapt their old flat data-driven APIs onto shadcn's
-// compound dropdown-menu.tsx/command.tsx structure; Toast/Resizable stay hand-rolled per the
-// migration brief, restyled with Tailwind utilities matching their qf-* look.
-//
-// Overrides below that fight a shadcn default gated behind an attribute variant (e.g.
-// `data-[side=right]:`, `group-data-horizontal/tabs:`) repeat that exact prefix themselves —
-// `cn` (tailwind-merge) only dedupes same-prefix utilities; an unprefixed override loses the
-// cascade to a prefixed default even when it appears later in the class list.
-
-// ---------------------------------------------------------------------------
-// Dialog, AlertDialog (shadcn dialog.tsx building blocks + Base UI Popup/Close)
-// ---------------------------------------------------------------------------
-
 export interface DialogProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -121,7 +103,6 @@ export interface AlertDialogProps {
   children?: React.ReactNode;
 }
 
-/** Confirmation dialog for consequential actions (design.md §31). No close-X; must Cancel or confirm. */
 export function AlertDialog({ open = false, onOpenChange, title, description, confirmLabel = "Confirm", cancelLabel = "Cancel", onConfirm, onCancel, tone = "default", loading = false, children }: AlertDialogProps) {
   const icon = tone === "destructive" ? "TriangleAlert" : tone === "warning" ? "ShieldAlert" : null;
   const iconTone = tone === "destructive" ? "text-status-error" : tone === "warning" ? "text-status-warning" : undefined;
@@ -146,10 +127,6 @@ export function AlertDialog({ open = false, onOpenChange, title, description, co
   );
 }
 
-// ---------------------------------------------------------------------------
-// Sheet (shadcn sheet.tsx)
-// ---------------------------------------------------------------------------
-
 export function Sheet({ open = false, onOpenChange, side = "right", title, description, footer, width, className = "", children }: {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -167,8 +144,7 @@ export function Sheet({ open = false, onOpenChange, side = "right", title, descr
         side={side}
         className={cn(
           "gap-0 border-border bg-[var(--surface-1)] p-0",
-          // SheetContent's own default width is `data-[side=…]:sm:max-w-sm` — an unprefixed
-          // override loses that cascade (higher-specificity attribute selector), so match it.
+
           width
             ? "data-[side=left]:sm:max-w-none data-[side=right]:sm:max-w-none"
             : "data-[side=left]:sm:max-w-[420px] data-[side=right]:sm:max-w-[420px]",
@@ -191,10 +167,6 @@ export function Sheet({ open = false, onOpenChange, side = "right", title, descr
   );
 }
 
-// ---------------------------------------------------------------------------
-// MenuList — hand-rolled static list, restyled with Tailwind
-// ---------------------------------------------------------------------------
-
 export interface MenuItemDef {
   type?: "separator" | "label";
   label?: React.ReactNode;
@@ -206,10 +178,6 @@ export interface MenuItemDef {
   checked?: boolean;
 }
 
-// ponytail: MenuList has no trigger/positioning of its own and no call site in the app (grep
-// confirms) — DropdownMenu below is now backed by shadcn's real Menu-based dropdown-menu.tsx
-// instead of composing this. Base UI's Menu.Item only works inside a Menu.Root/Popup, so a
-// standalone always-visible list stays a plain styled list rather than borrowing those parts.
 export function MenuList({ items = [], onSelect, floating = false, style, className = "" }: {
   items?: MenuItemDef[];
   onSelect?: (item: MenuItemDef) => void;
@@ -244,10 +212,6 @@ export function MenuList({ items = [], onSelect, floating = false, style, classN
   );
 }
 
-// ---------------------------------------------------------------------------
-// DropdownMenu (shadcn dropdown-menu.tsx — Base UI Menu)
-// ---------------------------------------------------------------------------
-
 export function DropdownMenu({ trigger, items = [], align = "start", onSelect, open, onOpenChange, className = "" }: {
   trigger: React.ReactNode;
   items?: MenuItemDef[];
@@ -259,11 +223,9 @@ export function DropdownMenu({ trigger, items = [], align = "start", onSelect, o
 }) {
   return (
     <ShadcnDropdownMenu open={open} onOpenChange={(v) => onOpenChange?.(v)}>
-      {/* The trigger is always a single interactive element (a Button, per every call site) —
-          Base UI's render prop clones it and merges in the menu's own handlers/aria/ref. */}
+
       <DropdownMenuTrigger render={trigger as React.ReactElement} />
-      {/* Every trigger here is a small icon button, so the default anchor-width popup (floored
-          to min-w-32 = 128px) truncates longer labels — qf-menu was min-width:200px, unbounded. */}
+
       <DropdownMenuContent align={align} className={cn("w-auto min-w-[200px]", className)}>
         {items.map((it, i) => {
           if (it.type === "separator") return <DropdownMenuSeparator key={i} />;
@@ -286,16 +248,8 @@ export function DropdownMenu({ trigger, items = [], align = "start", onSelect, o
   );
 }
 
-// ---------------------------------------------------------------------------
-// Command palette (⌘K) — shadcn command.tsx (cmdk)
-// ---------------------------------------------------------------------------
-
 export interface CommandGroup { heading?: string; items: { id: string; label: string; icon?: string; hint?: string; shortcut?: string[]; onSelect?: () => void }[] }
 
-// ponytail: cmdk (shadcn's Command) owns search filtering and keyboard nav (↑/↓/Enter) itself —
-// the hand-rolled query/active state and keydown handler this used to need are gone. In dialog
-// mode, closing is now left to Base UI's Dialog (which unmounts after its own exit animation)
-// instead of an immediate `if (!open) return null`.
 export function Command({ groups = [], placeholder = "Type a command or search…", emptyText = "No results found.", onSelect, open = true, onOpenChange, asDialog = false, autoFocus = true, className = "" }: {
   groups?: CommandGroup[];
   placeholder?: string;
@@ -334,8 +288,7 @@ export function Command({ groups = [], placeholder = "Type a command or search�
     </>
   );
   if (asDialog) {
-    // ui/command.tsx's CommandDialog wraps only the Dialog chrome, not a cmdk root — the caller
-    // supplies the actual <Command> (as shadcn's own docs examples do).
+
     return (
       <CommandDialog open={open} onOpenChange={(v) => onOpenChange?.(v)} className="sm:max-w-[560px]">
         <ShadcnCommand className={className}>{content}</ShadcnCommand>
@@ -345,10 +298,6 @@ export function Command({ groups = [], placeholder = "Type a command or search�
   if (!open) return null;
   return <ShadcnCommand className={cn("border border-border shadow-lg", className)}>{content}</ShadcnCommand>;
 }
-
-// ---------------------------------------------------------------------------
-// Toast, ToastRegion — hand-rolled composition, restyled with Tailwind (no sonner dependency)
-// ---------------------------------------------------------------------------
 
 export interface ToastDef {
   id: string | number;
@@ -390,10 +339,6 @@ export function ToastRegion({ toasts = [], onDismiss, className = "" }: { toasts
   );
 }
 
-// ---------------------------------------------------------------------------
-// Tabs (shadcn tabs.tsx — Base UI)
-// ---------------------------------------------------------------------------
-
 export interface TabItem { value: string; label: React.ReactNode; icon?: string; count?: number; content?: React.ReactNode; disabled?: boolean }
 
 export function Tabs({ items = [], value, defaultValue, onValueChange, variant = "underline", className = "", children }: {
@@ -412,8 +357,7 @@ export function Tabs({ items = [], value, defaultValue, onValueChange, variant =
       <TabsList
         variant={enclosed ? "default" : "line"}
         className={cn(
-          // TabsList's own height (`group-data-horizontal/tabs:h-8`) is gated behind that same
-          // attribute variant — an unprefixed `h-*` override never wins the cascade against it.
+
           enclosed
             ? "group-data-horizontal/tabs:h-auto items-center gap-0.5 border border-border bg-[var(--surface-1)] p-[3px]"
             : "group-data-horizontal/tabs:h-9 w-full justify-start gap-0 rounded-none border-b border-border bg-transparent p-0",
@@ -428,9 +372,8 @@ export function Tabs({ items = [], value, defaultValue, onValueChange, variant =
               "gap-1.5 text-muted-foreground data-active:text-foreground",
               enclosed
                 ? "h-[26px] rounded-sm px-2.5 text-xs data-active:bg-muted group-data-[variant=default]/tabs-list:data-active:shadow-none dark:data-active:border-transparent dark:data-active:bg-muted"
-                : // The active-tab underline's position (`group-data-horizontal/tabs:after:bottom-[-5px]`)
-                  // needs the same prefix to override; -1px sits it flush on the border, like the
-                  // original's `margin-bottom:-1px` overlap.
+                :
+
                   "h-9 flex-none justify-start rounded-none border-0 bg-transparent px-3 after:bg-status-active group-data-horizontal/tabs:after:-bottom-px data-active:bg-transparent dark:data-active:bg-transparent dark:data-active:border-transparent",
             )}
           >
@@ -450,10 +393,6 @@ export function Tabs({ items = [], value, defaultValue, onValueChange, variant =
     </ShadcnTabs>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Resizable — two-panel drag split (no Base UI/shadcn equivalent; kept hand-rolled as instructed)
-// ---------------------------------------------------------------------------
 
 export function Resizable({ direction = "horizontal", defaultSize = 60, minSize = 20, maxSize = 80, first, second, onResize, showGrip = true, className = "", style }: {
   direction?: "horizontal" | "vertical";

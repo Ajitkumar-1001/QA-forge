@@ -11,10 +11,6 @@ import {
 import { useQAForge } from "../provider";
 import { pipeline, source, trace, consoleEntries, network, steps as baseSteps, inspector as baseInspector, REASON_CODES, type Finding, type Run } from "@/data/qaforge";
 
-// Ported from the imported design project's app/screens/run-detail.jsx.
-// WORKFLOW §1: PLAN → EXECUTE → OBSERVE → DETECT → COLLECT → INVESTIGATE → HYPOTHESIS → VALIDATE → REPORT.
-// The run stays INVESTIGATING for the whole loop; `stage` indexes the five-agent pipeline.
-
 interface LiveFrame { at: number; doneUpTo: number; active?: number; failed?: number; stage: number; op?: string; done?: boolean; status: Run["status"] }
 
 const LIVE_SCRIPT: LiveFrame[] = ([
@@ -40,7 +36,6 @@ function useLiveRun(run: Run) {
   return LIVE_SCRIPT[phase];
 }
 
-// §4: this exact order, five rows, no Supervisor row.
 function AgentActivityPanel({ stage, cancelled }: { stage: number; cancelled: boolean }) {
   return (
     <Card title="Agent Activity" titleSize="sm" padding="none">
@@ -71,7 +66,6 @@ function Strip({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: "12px 24px 0" }}>{children}</div>;
 }
 
-// REPORT — the branch point. PASS terminates; FAIL and INCONCLUSIVE route to HUMAN APPROVAL; ERROR has no report.
 function ReportStrip({ run, status, finding, approval, onReview, onOpenTrace }: {
   run: Run;
   status: string;

@@ -14,16 +14,6 @@ import { RadioGroup as ShadcnRadioGroup, RadioGroupItem } from "@/components/ui/
 import { Switch as ShadcnSwitch } from "@/components/ui/switch";
 import { cn } from "cn";
 
-// Adapter layer: same exports/props as the original qf-* form primitives so screens don't change —
-// internals now render real shadcn/ui (Base UI flavor) components instead of qf-* CSS classes, same
-// convention as primitives.tsx. Checkbox/RadioGroup/Select/Switch already wrapped Base UI directly;
-// the installed shadcn ui/checkbox.tsx, radio-group.tsx, select.tsx, switch.tsx wrap those same
-// primitives with shadcn's styling.
-
-// ---------------------------------------------------------------------------
-// Label, Field
-// ---------------------------------------------------------------------------
-
 export function Label({ required = false, className, children, ...rest }: { required?: boolean } & React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <ShadcnLabel className={className} {...rest}>
@@ -55,10 +45,6 @@ export function Field({ label, htmlFor, description, error, required = false, or
   );
 }
 
-// ---------------------------------------------------------------------------
-// Input, Textarea
-// ---------------------------------------------------------------------------
-
 export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> {
   mono?: boolean;
   size?: "sm" | "md";
@@ -79,14 +65,9 @@ export function Input({ mono = false, size = "md", icon, invalid = false, classN
 }
 
 export function Textarea({ rows = 3, className, ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  // ponytail: shadcn's Textarea defaults to field-sizing-content (grows with input); the original
-  // qf-textarea was a fixed-height, manually vertical-resizable box — keep that behavior.
+
   return <ShadcnTextarea className={cn("field-sizing-fixed resize-y", className)} rows={rows} {...rest} />;
 }
-
-// ---------------------------------------------------------------------------
-// Select (Base UI) — native-select-shaped API: options + value/onValueChange
-// ---------------------------------------------------------------------------
 
 export type SelectOption = string | { value: string; label: string; disabled?: boolean };
 
@@ -116,10 +97,6 @@ export function Select({ options = [], value, defaultValue, onValueChange, place
     </ShadcnSelect>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Combobox — searchable single-select, composed from Popover + Command (cmdk owns filtering).
-// ---------------------------------------------------------------------------
 
 export interface ComboboxOption { value: string; label: string; hint?: string; icon?: string }
 
@@ -178,12 +155,6 @@ export function Combobox({ options = [], value, defaultValue, onValueChange, pla
   );
 }
 
-// ---------------------------------------------------------------------------
-// Checkbox (Base UI) — composed directly from the primitive (not ui/checkbox.tsx): that file's
-// indicator always shows a fixed check glyph with no data-indeterminate style, so it can't render
-// the dash/indeterminate state used by e.g. "select all" checkboxes.
-// ---------------------------------------------------------------------------
-
 export function Checkbox({ label, description, checked, defaultChecked = false, indeterminate = false, onCheckedChange, disabled = false, id, name, className }: {
   label?: React.ReactNode;
   description?: React.ReactNode;
@@ -222,10 +193,6 @@ export function Checkbox({ label, description, checked, defaultChecked = false, 
   );
 }
 
-// ---------------------------------------------------------------------------
-// RadioGroup (Base UI)
-// ---------------------------------------------------------------------------
-
 export interface RadioOption { value: string; label: React.ReactNode; description?: React.ReactNode; disabled?: boolean }
 
 export function RadioGroup({ options = [], value, defaultValue, onValueChange, name, orientation = "vertical", className }: {
@@ -257,10 +224,6 @@ export function RadioGroup({ options = [], value, defaultValue, onValueChange, n
     </ShadcnRadioGroup>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Switch (Base UI)
-// ---------------------------------------------------------------------------
 
 export function Switch({ checked, defaultChecked = false, onCheckedChange, disabled = false, size = "md", id, className }: {
   checked?: boolean;

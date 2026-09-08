@@ -20,14 +20,6 @@ import { Table as ShadcnTable, TableHeader, TableBody, TableRow, TableHead, Tabl
 import { Pagination as ShadcnPagination, PaginationContent, PaginationItem, PaginationLink, PaginationEllipsis } from "@/components/ui/pagination";
 import { cn } from "cn";
 
-// Adapter layer: same exports/props as the original qf-* primitives (ported from the imported
-// design project's component bundle, components/ui/**) so screens don't change — internals now
-// render real shadcn/ui (Base UI flavor) components instead of qf-* CSS classes.
-
-// ---------------------------------------------------------------------------
-// actions/Button, actions/ButtonGroup, actions/Kbd
-// ---------------------------------------------------------------------------
-
 export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "destructive-outline" | "link";
 export type ButtonSize = "sm" | "md" | "lg" | "icon" | "icon-sm" | "icon-lg";
 
@@ -92,10 +84,6 @@ export function Kbd({ keys, children, className, ...rest }: { keys?: string[] } 
   return <ShadcnKbd className={className} {...rest}>{children}</ShadcnKbd>;
 }
 
-// ---------------------------------------------------------------------------
-// actions/ToggleGroup (multi-select level filter, used by ConsoleViewer)
-// ---------------------------------------------------------------------------
-
 export interface ToggleGroupItem { value: string; label?: string; icon?: string; title?: string }
 
 export function ToggleGroup({ items = [], value, defaultValue, onValueChange, type = "single", size = "md", className = "", ...rest }: {
@@ -136,15 +124,8 @@ export function ToggleGroup({ items = [], value, defaultValue, onValueChange, ty
   );
 }
 
-// ---------------------------------------------------------------------------
-// data/Badge, data/Avatar, data/Separator, data/Spinner, data/Progress
-// ---------------------------------------------------------------------------
-
 export type Tone = "neutral" | "active" | "success" | "warning" | "error";
 
-// Outline (default) and solid className pairs per tone — QAForge's tone system has no shadcn
-// equivalent (shadcn's Badge variants are default/secondary/destructive/outline/ghost/link), so
-// it's layered on top of the shadcn Badge via className using the status-* tokens from globals.css.
 const BADGE_TONE: Record<Tone, { outline: string; solid: string }> = {
   neutral: { outline: "border-border-strong bg-transparent text-muted-foreground", solid: "border-border-strong bg-secondary text-foreground" },
   active: { outline: "border-status-active/45 bg-transparent text-status-active", solid: "border-primary! bg-primary text-primary-foreground" },
@@ -260,10 +241,6 @@ export function Progress({ value = 0, max = 100, tone = "primary", size = "md", 
   return <div className="flex items-center gap-2.5">{bar}<span className="w-9 text-right text-sm tabular-nums text-foreground">{Math.round(pct)}%</span></div>;
 }
 
-// ---------------------------------------------------------------------------
-// feedback/Alert
-// ---------------------------------------------------------------------------
-
 const ALERT_TONE: Record<"info" | "success" | "warning" | "destructive", string> = {
   info: "border-status-active/45 bg-status-active-muted [&_svg]:text-status-active",
   success: "border-status-success/45 bg-status-success-muted [&_svg]:text-status-success",
@@ -293,10 +270,6 @@ export function Alert({ tone = "default", icon, title, description, actions, cla
     </ShadcnAlert>
   );
 }
-
-// ---------------------------------------------------------------------------
-// layout/Card, layout/Empty, layout/Breadcrumb
-// ---------------------------------------------------------------------------
 
 export interface CardProps extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
   title?: React.ReactNode;
@@ -386,10 +359,6 @@ export function Breadcrumb({ items = [], className, ...rest }: { items?: Breadcr
   );
 }
 
-// ---------------------------------------------------------------------------
-// data/Table, data/DataTable, data/Pagination
-// ---------------------------------------------------------------------------
-
 export interface Column<Row> {
   key: string;
   header: React.ReactNode;
@@ -419,8 +388,7 @@ export interface TableProps<Row> {
 
 export function Table<Row>({ columns = [], rows = [], rowKey, compact = false, flush = false, onRowClick, selectedKey, emptyText = "No results.", rowClassName, className }: TableProps<Row>) {
   const cellCls = (c: Column<Row>) => cn(c.align === "right" && "text-right tabular-nums", c.mono && "font-mono text-xs", c.muted && "text-muted-foreground");
-  // ponytail: rows are typed (Run/Finding/…), not indexable — a narrow cast here lets a column
-  // fall back to `row[c.key]` when it has no `render`, same as the untyped source did at runtime.
+
   const rowRecord = (row: Row) => row as unknown as Record<string, React.ReactNode>;
   const rowHeight = compact ? "[&_td]:h-8" : "[&_td]:h-10";
   return (
@@ -554,10 +522,6 @@ export function DataTable<Row>({ columns = [], rows = [], pageSize = 10, toolbar
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// data/Chart
-// ---------------------------------------------------------------------------
 
 export interface ChartSeries { data: number[]; color?: string }
 export interface ChartLegendItem { label: string; color?: string }

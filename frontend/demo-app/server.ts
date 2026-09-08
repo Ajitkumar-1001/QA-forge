@@ -4,14 +4,6 @@ import http from "node:http";
 import { isAuthenticated } from "./middleware";
 import { sessions } from "./sessions";
 
-/**
- * PRD §24's demo application (Office-Hours-Findings.md §4, reframed from OQ3a into a build task
- * by `/office-hours`) — a minimal target app carrying one deliberately reproducible bug:
- * login succeeds → a session is created → navigation to /dashboard occurs → the middleware
- * rejects the (valid) session → the user is bounced back to /login. See `middleware.ts` for the
- * actual bug. This is the reference scenario `quickstart.md`'s Scenario 1 points the harness at.
- */
-
 const LOGIN_PAGE = `<!doctype html>
 <html>
   <body>
@@ -58,8 +50,7 @@ const server = http.createServer((req, res) => {
       const body = await readBody(req);
       const params = new URLSearchParams(body);
       const username = params.get("username") ?? "user";
-      // Login always succeeds — this demo app's bug is in the middleware, not the credential
-      // check itself (PRD §24: "login succeeds, session created").
+
       const sessionId = crypto.randomUUID();
       sessions.set(sessionId, { username });
       res.writeHead(302, {

@@ -8,8 +8,6 @@ import { ActionRiskBadge, Card, PageHeader } from "../domain";
 import { useQAForge } from "../provider";
 import { initialPolicies, type PolicyRow } from "@/data/qaforge";
 
-// Ported from the imported design project's app/screens/policies.jsx.
-
 const VERDICTS = ["ALLOW", "REQUIRE APPROVAL", "DENY"] as const;
 
 function PolicyCard({ env, rows, onChange, locked }: { env: "STAGING" | "PRODUCTION"; rows: PolicyRow[]; onChange: (env: "STAGING" | "PRODUCTION", action: string, verdict: string) => void; locked?: boolean }) {

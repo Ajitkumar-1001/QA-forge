@@ -1,11 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// No live Postgres exists in this environment (see tasks.md's T004/T020 notes) — but unlike the
-// OAuth-flow tests, this one doesn't need Better Auth's own adapter, only Drizzle + the real
-// migrations. @electric-sql/pglite is a real (WASM, in-memory) Postgres, so the UNIQUE constraint
-// assertion below is a genuine DB-level check, not a mocked one. `getGithubConnectionForCaller`'s
-// signature stays exactly `(callerId: string)` — no injected `db` param — by mocking the `db`
-// module import instead of changing the function under test.
 vi.mock("@/db/client", async () => {
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
@@ -17,9 +11,6 @@ vi.mock("@/db/client", async () => {
   return { db };
 });
 
-// T028's audit-log assertions don't need a real session — `getCallerId` is FR-015's own,
-// separately-tested primitive (tests/unit/get-caller-id.test.ts); mocked here so this file
-// stays focused on the repository/audit-logging composition.
 const getCallerIdMock = vi.fn<(headers: Headers) => Promise<string | null>>();
 vi.mock("@/lib/auth", () => ({ getCallerId: (headers: Headers) => getCallerIdMock(headers) }));
 
@@ -35,7 +26,6 @@ beforeEach(async () => {
   ({ getGithubConnectionForCallerSafely } = await import("@/lib/github-connection-service"));
   getCallerIdMock.mockReset();
 
-  // Fresh fixture per test: two users, one GithubConnection owned by user A only.
   await db.delete(schema.githubConnection);
   await db.delete(schema.account);
   await db.delete(schema.session);
@@ -76,7 +66,7 @@ describe("getGithubConnectionForCaller — FR-006/FR-009/FR-012/FR-013 worked ex
         patReference: "enc:another",
         scopes: "repo",
       }),
-    ).rejects.toMatchObject({ cause: { code: "23505" } }); // Postgres unique_violation SQLSTATE
+    ).rejects.toMatchObject({ cause: { code: "23505" } });
   });
 });
 

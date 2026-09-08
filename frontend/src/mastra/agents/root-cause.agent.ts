@@ -18,10 +18,6 @@ export const rootCauseAgent = new Agent({
   model: rootCauseModel,
 });
 
-/**
- * FR-009: on failure, generate at least two competing root-cause hypotheses, each with
- * supporting/contradicting evidence and a confidence value.
- */
 export async function generateHypotheses(
   objective: string,
   evidence: ToolResult[],

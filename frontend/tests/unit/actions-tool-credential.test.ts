@@ -11,11 +11,6 @@ function fakePage(fill: (value: string) => Promise<void>): Page {
   } as unknown as Page;
 }
 
-/**
- * T065, 2026-09-04 /speckit-converge (FR-001) — previously the supplied credential was threaded
- * only into evidence redaction, never into the browser-execution path; the fill tool's value was
- * entirely LLM-supplied, so a login-style objective had no mechanism to actually use it.
- */
 describe("actions.tool fill — real credential substitution (T065)", () => {
   it("uses the real credential value for a field whose accessible name looks credential-like", async () => {
     const fill = vi.fn().mockResolvedValue(undefined);

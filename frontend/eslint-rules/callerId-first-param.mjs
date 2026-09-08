@@ -1,21 +1,9 @@
-// SEC-009: a documented convention with no build-time check depends on every future author
-// having read contracts/ownership-convention.md. This rule closes that gap for the two things
-// the convention itself can't verify by review alone:
-//
-//   1. Every function exported from src/lib/repositories/** takes `callerId` as its literal
-//      first parameter (FR-008's positive case — FR-008's negative case, that system-only code
-//      stays unreachable from tRPC, is a separate import-boundary check, not this rule).
-//   2. A matching ownership-fixture test file exists for each such export.
-//
-// Scoped entirely to src/lib/repositories/** via eslint.config.mjs's `files` glob — everything
-// exported from that directory is assumed user-facing by construction (system-only code lives
-// elsewhere per FR-008), so there is no in-rule exemption list to maintain.
 import fs from "node:fs";
 import path from "node:path";
 
 function candidateTestPaths(sourceFilename) {
   const dir = path.dirname(sourceFilename);
-  // src/lib/repositories/<name>.ts -> frontend/tests/{unit,integration}/<name>.test.ts
+
   const repoRoot = dir.slice(0, dir.indexOf(`${path.sep}src${path.sep}`) + 1);
   const base = path.basename(sourceFilename, path.extname(sourceFilename));
   return ["unit", "integration"].map((kind) => path.join(repoRoot, "tests", kind, `${base}.test.ts`));
