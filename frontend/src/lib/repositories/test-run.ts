@@ -185,9 +185,19 @@ export async function recordRunResultForCaller(
         // separately-threaded param — dedupe by (hypothesisId, evidenceId) since nothing
         // upstream guarantees the model's evidenceLinks are free of duplicates
         // (research.md #5): last occurrence wins.
+        const evidenceIds = new Set(r.evidence.map((item) => item.id));
         const dedupedLinks = new Map<string, { hypothesisId: string; evidenceId: string; role: "SUPPORTING" | "CONTRADICTING" }>();
         for (const h of r.hypotheses) {
           for (const link of h.evidenceLinks) {
+            // A dangling evidenceRef (no matching row in r.evidence) is 001's data-quality
+            // problem, not a reason to fail the whole write — the FK would otherwise roll
+            // back this entire transaction and lose the full report over one bad ref.
+            if (!evidenceIds.has(link.evidenceRef)) {
+              console.warn(
+                `recordRunResultForCaller: dropping dangling evidenceRef "${link.evidenceRef}" on hypothesis "${h.id}" (runId=${runId}) — no matching evidence row`,
+              );
+              continue;
+            }
             dedupedLinks.set(`${h.id}:${link.evidenceRef}`, {
               hypothesisId: h.id,
               evidenceId: link.evidenceRef,
