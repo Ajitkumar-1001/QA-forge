@@ -12,6 +12,15 @@ import {
   unique,
   primaryKey,
 } from "drizzle-orm/pg-core";
+import {
+  RUN_STATUS_VALUES,
+  ERROR_REASON_VALUES,
+  STEP_STATUS_VALUES,
+  EVIDENCE_TYPE_VALUES,
+  HYPOTHESIS_STATUS_VALUES,
+  HYPOTHESIS_EVIDENCE_ROLE_VALUES,
+  REPORT_RESULT_VALUES,
+} from "./enums";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -141,37 +150,19 @@ export type GithubConnection = typeof githubConnection.$inferSelect;
 // full spec this section implements verbatim (columns, constraints, cascade behavior).
 // No GithubConnection/Approval table — explicitly out of scope (FR-016).
 
-export const testRunStatusEnum = pgEnum("test_run_status", [
-  "PLANNING",
-  "RUNNING",
-  "INVESTIGATING",
-  "PASSED",
-  "FAILED",
-  "ERROR",
-]);
+export const testRunStatusEnum = pgEnum("test_run_status", RUN_STATUS_VALUES);
 
-export const testRunErrorReasonEnum = pgEnum("test_run_error_reason", [
-  "LIMIT_EXCEEDED",
-  "APP_UNREACHABLE",
-  "OBJECTIVE_NOT_PLANNABLE",
-  "REPO_ACCESS_DENIED",
-  "LLM_PROVIDER_ERROR",
-]);
+export const testRunErrorReasonEnum = pgEnum("test_run_error_reason", ERROR_REASON_VALUES);
 
-export const testStepStatusEnum = pgEnum("test_step_status", ["PENDING", "RUNNING", "PASSED", "FAILED"]);
+export const testStepStatusEnum = pgEnum("test_step_status", STEP_STATUS_VALUES);
 
-export const evidenceTypeEnum = pgEnum("evidence_type", ["CONSOLE", "NETWORK", "DOM", "CODE", "HTTP"]);
+export const evidenceTypeEnum = pgEnum("evidence_type", EVIDENCE_TYPE_VALUES);
 
-export const hypothesisStatusEnum = pgEnum("hypothesis_status", [
-  "PROPOSED",
-  "VALIDATING",
-  "SUPPORTED",
-  "REJECTED",
-]);
+export const hypothesisStatusEnum = pgEnum("hypothesis_status", HYPOTHESIS_STATUS_VALUES);
 
-export const hypothesisEvidenceRoleEnum = pgEnum("hypothesis_evidence_role", ["SUPPORTING", "CONTRADICTING"]);
+export const hypothesisEvidenceRoleEnum = pgEnum("hypothesis_evidence_role", HYPOTHESIS_EVIDENCE_ROLE_VALUES);
 
-export const reportResultEnum = pgEnum("report_result", ["PASS", "FAIL", "INCONCLUSIVE"]);
+export const reportResultEnum = pgEnum("report_result", REPORT_RESULT_VALUES);
 
 export const project = pgTable(
   "project",

@@ -157,12 +157,27 @@ describe("deleteProjectForCaller — FR-009/SC-004 cascade-delete", () => {
       expect(rows.length, `expected fixture rows in ${table}`).toBeGreaterThan(0);
     }
 
+    // A second tenant's rows, seeded so the post-delete assertions below can't pass
+    // trivially — an unscoped "wipe every row in every table" bug would clear these too.
+    const projectB = await createProjectForCaller("user-b", {
+      applicationUrl: "https://b.example.com",
+      repository: "b/repo",
+    });
+    const scenarioB = await createScenarioForCaller("user-b", {
+      projectId: projectB.id,
+      objective: "b's own objective",
+      credentialsReference: null,
+    });
+    if ("ok" in scenarioB) throw new Error("unexpected denial building user-b fixture");
+    const startedB = await startRunForCaller("user-b", { scenarioId: scenarioB.id, idempotencyKey: "b-key" });
+    if ("ok" in startedB) throw new Error("unexpected denial building user-b fixture");
+
     expect(await deleteProjectForCaller("user-a", project.id)).toEqual({ ok: true });
 
+    // project/testScenario/testRun legitimately keep one row each now — user-b's (checked
+    // below, proving the delete is scoped and not a global wipe). The other 6 tables have
+    // no user-b rows (no recordRunResultForCaller for user-b), so they must be fully empty.
     const after = {
-      project: await db.query.project.findMany(),
-      testScenario: await db.query.testScenario.findMany(),
-      testRun: await db.query.testRun.findMany(),
       testStep: await db.query.testStep.findMany(),
       evidence: await db.query.evidence.findMany(),
       hypothesis: await db.query.hypothesis.findMany(),
@@ -173,5 +188,9 @@ describe("deleteProjectForCaller — FR-009/SC-004 cascade-delete", () => {
     for (const [table, rows] of Object.entries(after)) {
       expect(rows, `expected zero rows in ${table} after cascade-delete`).toHaveLength(0);
     }
+
+    expect(await db.query.project.findMany()).toEqual([expect.objectContaining({ id: projectB.id })]);
+    expect(await db.query.testScenario.findMany()).toEqual([expect.objectContaining({ id: scenarioB.id })]);
+    expect(await db.query.testRun.findMany()).toEqual([expect.objectContaining({ id: startedB.run.id })]);
   });
 });

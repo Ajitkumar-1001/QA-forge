@@ -8,6 +8,7 @@ import {
 import { runQaInvestigation } from "../mastra/workflows/qa-investigation.workflow";
 import { logEvent } from "../mastra/observability";
 import type { ErrorReason, Report, RunStatus } from "../mastra/types";
+import { ERROR_REASON_VALUES } from "../db/enums";
 
 type OutputFormat = "text" | "json";
 
@@ -117,13 +118,10 @@ function runStatusForReportResult(result: Report["result"]): RunStatus {
   return result === "PASS" ? "PASSED" : "FAILED";
 }
 
-const KNOWN_ERROR_REASONS: ReadonlySet<string> = new Set([
-  "LIMIT_EXCEEDED",
-  "APP_UNREACHABLE",
-  "OBJECTIVE_NOT_PLANNABLE",
-  "REPO_ACCESS_DENIED",
-  "LLM_PROVIDER_ERROR",
-] satisfies ErrorReason[]);
+// Sourced directly from db/enums.ts — not a hand-typed copy, so a future ErrorReason
+// value added there is automatically known here too (a `satisfies` copy would silently
+// stay stale on addition; only removal would fail typecheck).
+const KNOWN_ERROR_REASONS: ReadonlySet<string> = new Set<string>(ERROR_REASON_VALUES);
 
 function isKnownErrorReason(reason: string): reason is ErrorReason {
   return KNOWN_ERROR_REASONS.has(reason);
@@ -134,7 +132,7 @@ function isKnownErrorReason(reason: string): reason is ErrorReason {
 let currentRun: { callerId: string; dbRunId: string } | undefined;
 let recordRunResultForCallerFn: typeof import("../lib/repositories/test-run").recordRunResultForCaller | undefined;
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -159,10 +157,10 @@ async function main(): Promise<void> {
     throw Object.assign(new Error("QAFORGE_USER_ID is not set"), { reason: "MISSING_USER_ID" });
   }
 
-  // Fresh per invocation, matching the CLI's existing runId generation below — reused as
-  // both 001's internal workflow-scoped run id and FR-007's idempotency key. True
-  // retry-safety (the same key across two separate invocations) isn't exercised by the
-  // CLI itself, only by a future caller that persists and replays a key (research.md #4).
+  // Fresh per invocation — this is the CLI's sole runId generation, reused as both 001's
+  // internal workflow-scoped run id and FR-007's idempotency key. True retry-safety (the
+  // same key across two separate invocations) isn't exercised by the CLI itself, only by
+  // a future caller that persists and replays a key (research.md #4).
   const runId = crypto.randomUUID();
 
   // Deferred until every cheap, DB-free check above has passed — importing these earlier
@@ -218,12 +216,18 @@ async function main(): Promise<void> {
   // Durable write, additive alongside the existing console output below (FR-003) — neither
   // depends on the other having happened first. modelCalls is always [] today: nothing in
   // 001's agents constructs a ModelCall value yet (research.md #7, a known, separate gap).
-  await recordRunResultForCaller(callerId, dbRunId, {
+  const recorded = await recordRunResultForCaller(callerId, dbRunId, {
     status: runStatusForReportResult(report.result),
     errorReason: null,
     modelCalls: [],
     report,
   });
+  if (!recorded.ok) {
+    // Ownership can't realistically have changed between startRunForCaller and here within
+    // one process's lifetime, but surface it rather than silently printing the report as if
+    // the durable write had succeeded.
+    console.error(`Failed to record run result: ${recorded.reason}`);
+  }
 
   logEvent({
     type: "terminal",
@@ -244,7 +248,10 @@ async function main(): Promise<void> {
   process.exitCode = exitCodeForResult(report.result);
 }
 
-main().catch((error: unknown) => {
+// Extracted so tests can invoke the exact same fatal-error handling main().catch() runs in
+// production (report to stderr, set exit code 3, best-effort persist ERROR status) without
+// having to reimplement it.
+export async function handleFatalError(error: unknown): Promise<void> {
   const format = detectFormat(process.argv.slice(2));
   const reason = (error as { reason?: string })?.reason ?? "UNKNOWN_ERROR";
   const message = error instanceof Error ? error.message : String(error);
@@ -263,7 +270,7 @@ main().catch((error: unknown) => {
     // unlisted value outright and null is itself a valid, honest "unclassified" state
     // (data-model.md: non-null only when status = 'ERROR', never required to be non-null).
     const errorReason = isKnownErrorReason(reason) ? reason : null;
-    recordRunResultForCallerFn(currentRun.callerId, currentRun.dbRunId, {
+    await recordRunResultForCallerFn(currentRun.callerId, currentRun.dbRunId, {
       status: "ERROR",
       errorReason,
       modelCalls: [],
@@ -274,4 +281,15 @@ main().catch((error: unknown) => {
       console.error("Failed to persist ERROR run status:", persistError);
     });
   }
-});
+}
+
+// Only run as the process entry point — not when imported (e.g. by
+// tests/unit/cli-run-persistence.test.ts, which calls main()/handleFatalError() directly
+// against a mocked DB instead of spawning a real subprocess).
+function isEntryPoint(): boolean {
+  return process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
+}
+
+if (isEntryPoint()) {
+  main().catch(handleFatalError);
+}

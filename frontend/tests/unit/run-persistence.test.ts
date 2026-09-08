@@ -219,6 +219,45 @@ describe("recordRunResultForCaller + getRunForCaller — US1 round-trip (FR-001/
     expect(full!.hypotheses).toHaveLength(2); // not duplicated
   });
 
+  it("a PASS report round-trips with no hypotheses and a null winner (US1/AC2)", async () => {
+    const { run } = await seedRun();
+    const recorded = await recordRunResultForCaller(CALLER, run.id, {
+      status: "PASSED",
+      errorReason: null,
+      modelCalls: [],
+      report: { ...fixtureReport(), result: "PASS", hypotheses: [], winningHypothesisId: null, confidence: null },
+    });
+    expect(recorded).toEqual({ ok: true, alreadyRecorded: false });
+
+    const full = await getRunForCaller(CALLER, run.id);
+    expect(full!.status).toBe("PASSED");
+    expect(full!.hypotheses).toHaveLength(0);
+    expect(full!.report).not.toBeNull();
+    expect(full!.report!.result).toBe("PASS");
+    expect(full!.report!.winningHypothesisId).toBeNull();
+    expect(full!.report!.hypotheses).toHaveLength(0); // report_hypothesis has nothing to link
+  });
+
+  it("an INCONCLUSIVE report keeps a null winner even with non-empty, unresolved hypotheses (FR-014)", async () => {
+    const { run } = await seedRun();
+    const report = fixtureReport();
+    const inconclusiveHypotheses = report.hypotheses.map((h) => ({ ...h, status: "REJECTED" as const }));
+
+    const recorded = await recordRunResultForCaller(CALLER, run.id, {
+      status: "FAILED",
+      errorReason: null,
+      modelCalls: [],
+      report: { ...report, result: "INCONCLUSIVE", hypotheses: inconclusiveHypotheses, winningHypothesisId: null },
+    });
+    expect(recorded).toEqual({ ok: true, alreadyRecorded: false });
+
+    const full = await getRunForCaller(CALLER, run.id);
+    expect(full!.hypotheses).toHaveLength(2); // still persisted — just none of them won
+    expect(full!.hypotheses.every((h) => h.status === "REJECTED")).toBe(true);
+    expect(full!.report!.result).toBe("INCONCLUSIVE");
+    expect(full!.report!.winningHypothesisId).toBeNull();
+  });
+
   it("a run with no report (e.g. an early ERROR) records the terminal status alone", async () => {
     const { run } = await seedRun();
     const recorded = await recordRunResultForCaller(CALLER, run.id, {

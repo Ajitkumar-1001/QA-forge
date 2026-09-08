@@ -140,9 +140,127 @@ describe("startRunForCaller / recordRunResultForCaller / getRunForCaller — FR-
 
     warnSpy.mockRestore();
   });
+
+  it("a dangling winningHypothesisId is dropped to null, not fatal — same policy as a dangling evidenceRef", async () => {
+    const started = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "key-2" })) as {
+      run: TestRun;
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const report: Report = {
+      result: "FAIL",
+      steps: [],
+      evidence: [],
+      hypotheses: [
+        {
+          id: "hyp-1",
+          status: "REJECTED",
+          description: "A hypothesis that was considered but not the (bogus) winner",
+          confidence: 0.4,
+          evidenceLinks: [],
+          checks: [],
+        },
+      ],
+      // "hyp-ghost" matches no hypothesis in this report — a plausible model-output bug,
+      // same failure class as a dangling evidenceRef.
+      winningHypothesisId: "hyp-ghost",
+      confidence: 0.4,
+    };
+
+    const result = await recordRunResultForCaller("user-a", started.run.id, {
+      status: "FAILED",
+      errorReason: null,
+      modelCalls: [],
+      report,
+    });
+    expect(result).toEqual({ ok: true, alreadyRecorded: false });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("hyp-ghost"));
+
+    const full = await getRunForCaller("user-a", started.run.id);
+    expect(full!.hypotheses).toHaveLength(1); // the real hypothesis still persists
+    expect(full!.report!.winningHypothesisId).toBeNull(); // the bogus pointer does not
+
+    warnSpy.mockRestore();
+  });
+
+  it("an evidence stepId that matches no step position resolves to null, with a warning", async () => {
+    const started = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "key-3" })) as {
+      run: TestRun;
+    };
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const report: Report = {
+      result: "FAIL",
+      steps: [],
+      evidence: [{ id: "ev-orphan", stepId: "99", type: "CONSOLE", content: "no step at position 99", metadata: {} }],
+      hypotheses: [],
+      winningHypothesisId: null,
+      confidence: null,
+    };
+
+    await recordRunResultForCaller("user-a", started.run.id, {
+      status: "FAILED",
+      errorReason: null,
+      modelCalls: [],
+      report,
+    });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("99"));
+
+    const full = await getRunForCaller("user-a", started.run.id);
+    expect(full!.evidence[0]!.stepId).toBeNull();
+
+    warnSpy.mockRestore();
+  });
+
+  it("a duplicate (hypothesisId, evidenceId) link keeps the last occurrence's role", async () => {
+    const started = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "key-4" })) as {
+      run: TestRun;
+    };
+
+    const report: Report = {
+      result: "FAIL",
+      steps: [],
+      evidence: [{ id: "ev-1", stepId: null, type: "CONSOLE", content: "some output", metadata: {} }],
+      hypotheses: [
+        {
+          id: "hyp-1",
+          status: "SUPPORTED",
+          description: "duplicate-link hypothesis",
+          confidence: 0.7,
+          evidenceLinks: [
+            { evidenceRef: "ev-1", role: "SUPPORTING" },
+            { evidenceRef: "ev-1", role: "CONTRADICTING" }, // same pair, different role — last wins
+          ],
+          checks: [],
+        },
+      ],
+      winningHypothesisId: "hyp-1",
+      confidence: 0.7,
+    };
+
+    await recordRunResultForCaller("user-a", started.run.id, {
+      status: "FAILED",
+      errorReason: null,
+      modelCalls: [],
+      report,
+    });
+
+    const links = await db.query.hypothesisEvidence.findMany({
+      where: (t, { eq }) => eq(t.hypothesisId, "hyp-1"),
+    });
+    expect(links).toEqual([expect.objectContaining({ hypothesisId: "hyp-1", evidenceId: "ev-1", role: "CONTRADICTING" })]);
+  });
 });
 
 describe("startRunForCaller — FR-007/FR-008 idempotency under concurrency (SC-003)", () => {
+  // PGlite is single user/connection (its own README), so the two Promise.all-issued
+  // INSERTs below execute sequentially on one connection — this does not exercise a true
+  // concurrent race between overlapping transactions the way two separate Postgres
+  // connections would. The atomicity guarantee itself (UNIQUE(scenario_id,
+  // idempotency_key) + INSERT...ON CONFLICT DO NOTHING) is correct by construction in real
+  // Postgres regardless; what this test actually proves is that the constraint exists and
+  // that startRunForCaller's insert-or-return-existing logic converges both calls onto the
+  // same row, not that the race itself was empirically closed under concurrency.
   it("exactly one run is created for two simultaneous requests with the same (scenarioId, idempotencyKey)", async () => {
     const [first, second] = await Promise.all([
       startRunForCaller("user-a", { scenarioId, idempotencyKey: "race-key" }),

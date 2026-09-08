@@ -20,6 +20,22 @@ import type { RunStatus, ErrorReason, ModelCall, Report } from "@/mastra/types";
 
 const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set(["PASSED", "FAILED", "ERROR"]);
 
+// 001 emits Evidence.stepId as String(position), not a real id — resolve via the
+// position -> generated-id map. Same "drop + warn, don't fail the write" policy as the
+// dangling evidenceRef/winningHypothesisId cases below: an unresolvable position is 001's
+// data-quality problem, not a reason to lose the rest of the report.
+function resolveStepId(rawStepId: string | null, stepIdByPosition: Map<number, string>, runId: string): string | null {
+  if (rawStepId === null) return null;
+  const resolved = stepIdByPosition.get(Number(rawStepId));
+  if (resolved === undefined) {
+    console.warn(
+      `recordRunResultForCaller: evidence stepId "${rawStepId}" does not match any step position (runId=${runId}) — storing as null`,
+    );
+    return null;
+  }
+  return resolved;
+}
+
 function rowToTestRun(row: Record<string, unknown>): TestRun {
   return {
     id: row.id as string,
@@ -161,7 +177,7 @@ export async function recordRunResultForCaller(
             // output, not caller-asserted ownership data, so reusing them here is safe.
             id: item.id,
             runId,
-            stepId: item.stepId === null ? null : (stepIdByPosition.get(Number(item.stepId)) ?? null),
+            stepId: resolveStepId(item.stepId, stepIdByPosition, runId),
             type: item.type,
             content: item.content,
             metadata: item.metadata,
@@ -210,12 +226,25 @@ export async function recordRunResultForCaller(
         }
       }
 
+      // Same class of upstream data-quality problem as the dangling evidenceRef above
+      // (and the same fix): a winningHypothesisId with no matching row in r.hypotheses
+      // would otherwise FK-violate on insert and roll back the entire transaction —
+      // losing the whole report over one bad model-produced pointer.
+      const hypothesisIds = new Set(r.hypotheses.map((h) => h.id));
+      let winningHypothesisId = r.winningHypothesisId;
+      if (winningHypothesisId !== null && !hypothesisIds.has(winningHypothesisId)) {
+        console.warn(
+          `recordRunResultForCaller: dropping dangling winningHypothesisId "${winningHypothesisId}" (runId=${runId}) — no matching hypothesis row`,
+        );
+        winningHypothesisId = null;
+      }
+
       const reportId = crypto.randomUUID();
       await tx.insert(report).values({
         id: reportId,
         runId,
         result: r.result,
-        winningHypothesisId: r.winningHypothesisId,
+        winningHypothesisId,
         confidence: r.confidence,
       });
 
@@ -262,7 +291,9 @@ export async function getRunForCaller(callerId: string, runId: string): Promise<
   const run = runRows[0]?.run;
   if (!run) return null;
 
-  const ownedChain = and(eq(testScenario.id, testRun.scenarioId), eq(project.userId, callerId));
+  // Only project.userId does real scoping here — testScenario/testRun equality is already
+  // guaranteed by each query's own innerJoin below, so it isn't repeated as a condition.
+  const ownedChain = eq(project.userId, callerId);
 
   const stepRows = await db
     .select({ step: testStep })

@@ -1,14 +1,19 @@
 import type { StepCriterion } from "./schemas/step-criterion.schema";
 import type { Hypothesis } from "./schemas/hypothesis.schema";
+import type {
+  RUN_STATUS_VALUES,
+  ERROR_REASON_VALUES,
+  STEP_STATUS_VALUES,
+  EVIDENCE_TYPE_VALUES,
+  REPORT_RESULT_VALUES,
+} from "../db/enums";
 
-export type RunStatus = "PLANNING" | "RUNNING" | "INVESTIGATING" | "PASSED" | "FAILED" | "ERROR";
+// Derived from src/db/enums.ts's `as const` tuples — the same single source of truth
+// 003-durable-run-persistence's schema.ts uses for its pgEnum columns, so the DB-allowed
+// value set and this runtime type can't silently drift apart.
+export type RunStatus = (typeof RUN_STATUS_VALUES)[number];
 
-export type ErrorReason =
-  | "LIMIT_EXCEEDED"
-  | "APP_UNREACHABLE"
-  | "OBJECTIVE_NOT_PLANNABLE"
-  | "REPO_ACCESS_DENIED"
-  | "LLM_PROVIDER_ERROR";
+export type ErrorReason = (typeof ERROR_REASON_VALUES)[number];
 
 export interface ModelCall {
   role: "planner" | "rootCause" | "validator";
@@ -29,7 +34,7 @@ export interface Run {
   modelCalls: ModelCall[];
 }
 
-export type StepStatus = "PENDING" | "RUNNING" | "PASSED" | "FAILED";
+export type StepStatus = (typeof STEP_STATUS_VALUES)[number];
 
 export interface Step {
   position: number;
@@ -41,9 +46,9 @@ export interface Step {
   status: StepStatus;
 }
 
-export type EvidenceType = "CONSOLE" | "NETWORK" | "DOM" | "CODE" | "HTTP";
+export type EvidenceType = (typeof EVIDENCE_TYPE_VALUES)[number];
 
-export type ReportResult = "PASS" | "FAIL" | "INCONCLUSIVE";
+export type ReportResult = (typeof REPORT_RESULT_VALUES)[number];
 
 export interface Report {
   result: ReportResult;
