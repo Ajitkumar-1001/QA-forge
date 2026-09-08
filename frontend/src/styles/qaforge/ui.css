@@ -1,4 +1,3 @@
-/* QAForge UI primitives (shadcn-shaped, tokens from ./tokens.css). Class prefix qf-. Ported verbatim from the imported Claude Design project. */
 .qf-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--control-height);padding:0 12px;border-radius:var(--radius-md);border:1px solid transparent;background:transparent;color:var(--text-primary);font:inherit;font-size:var(--text-body-size);font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;user-select:none;transition:var(--transition-colors);text-decoration:none}
 .qf-btn:hover{text-decoration:none}
 .qf-btn:disabled,.qf-btn[aria-disabled="true"]{opacity:.5;pointer-events:none}
@@ -43,7 +42,7 @@
 .qf-toggle-group .qf-toggle[aria-pressed="true"]{background:var(--surface-3);box-shadow:inset 0 0 0 1px var(--border)}
 .qf-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:var(--radius-sm);border:1px solid var(--border);border-bottom-width:2px;background:var(--surface-3);color:var(--text-secondary);font-family:var(--font-mono);font-size:11px;line-height:1;font-weight:500}
 .qf-kbd-seq{display:inline-flex;gap:3px;align-items:center}
-/* Forms */
+
 .qf-label{display:inline-block;font-size:var(--text-body-size);font-weight:500;color:var(--text-primary);line-height:1.4}
 .qf-label--required::after{content:" *";color:var(--error)}
 .qf-field{display:flex;flex-direction:column;gap:6px}
@@ -126,7 +125,7 @@
 .qf-switch--sm{width:26px;height:14px}
 .qf-switch--sm .qf-switch__thumb{width:8px;height:8px;left:2px;top:2px}
 .qf-switch--sm[data-checked] .qf-switch__thumb{transform:translateX(12px)}
-/* Data display */
+
 .qf-badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface-3);color:var(--text-secondary);font-size:var(--text-micro-size);font-weight:var(--text-micro-weight);line-height:1;letter-spacing:var(--tracking-label);text-transform:uppercase;white-space:nowrap;font-variant-numeric:tabular-nums}
 .qf-badge--pill{border-radius:var(--radius-pill);padding:0 8px}
 .qf-badge--sm{height:18px;padding:0 5px;font-size:10px}
@@ -207,7 +206,7 @@
 .qf-chart__legend-item{display:inline-flex;align-items:center;gap:6px}
 .qf-chart__swatch{width:8px;height:8px;border-radius:2px;flex-shrink:0}
 .qf-chart__grid line{stroke:var(--chart-grid)}
-/* Layout */
+
 .qf-card{display:flex;flex-direction:column;background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:var(--radius-md);min-width:0}
 .qf-card--elevated{background:var(--surface-elevated)}
 .qf-card--nested{background:var(--surface-3);border-color:var(--border-subtle)}
@@ -263,7 +262,7 @@
 .qf-breadcrumb__current{color:var(--text-primary);font-weight:500}
 .qf-breadcrumb__sep{color:var(--text-disabled);display:inline-flex}
 .qf-breadcrumb__mono{font-family:var(--font-mono);font-size:var(--text-code-size)}
-/* Overlays */
+
 .qf-overlay{position:fixed;inset:0;z-index:50;background:var(--scrim);animation:qf-fade-in var(--duration-base) var(--ease-out)}
 .qf-overlay--inline{position:absolute}
 .qf-dialog{position:fixed;z-index:51;left:50%;top:50%;transform:translate(-50%,-50%);width:min(480px,calc(100% - 32px));max-height:calc(100% - 32px);display:flex;flex-direction:column;background:var(--popover);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-dialog);animation:qf-scale-in var(--duration-base) var(--ease-out);overflow:hidden}
@@ -325,7 +324,7 @@
 .qf-toast__title{font-weight:500;line-height:1.4}
 .qf-toast__description{font-size:var(--text-small-size);color:var(--text-secondary);line-height:1.45}
 .qf-toast__action{margin-left:auto;flex-shrink:0}
-/* Feedback */
+
 .qf-alert{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-primary);font-size:var(--text-body-size);line-height:1.5}
 .qf-alert__icon{grid-row:1/span 3;display:inline-flex;margin-top:2px;color:var(--text-secondary)}
 .qf-alert__title{margin:0;font-weight:600;font-size:var(--text-body-size);line-height:1.4}
@@ -343,7 +342,7 @@
 .qf-alert--success .qf-alert__description{color:var(--text-primary);opacity:.85}
 .qf-alert--info{border-color:color-mix(in srgb,var(--blue-500) 45%,transparent);background:var(--blue-subtle)}
 .qf-alert--info .qf-alert__icon{color:var(--blue-500)}
-/* Sidebar */
+
 .qf-sidebar{display:flex;flex-direction:column;width:var(--sidebar-width);height:100%;flex-shrink:0;background:var(--surface-1);border-right:1px solid var(--border);color:var(--text-secondary);transition:width var(--duration-slow) var(--ease-standard);overflow:hidden}
 .qf-sidebar--collapsed{width:var(--sidebar-width-collapsed)}
 .qf-sidebar__header{display:flex;align-items:center;gap:8px;height:var(--topbar-height);padding:0 16px;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -369,7 +368,7 @@
 .qf-sidebar__workspace-text small{font-size:var(--text-caption-size);color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis}
 .qf-sidebar--collapsed .qf-sidebar__workspace{justify-content:center;padding:0}
 .qf-sidebar--collapsed .qf-sidebar__workspace-text,.qf-sidebar--collapsed .qf-sidebar__workspace>.qf-icon{display:none}
-/* Generic */
+
 .qf-icon{display:inline-block;flex-shrink:0;vertical-align:middle}
 .qf-mono{font-family:var(--font-mono);font-size:var(--text-code-size)}
 .qf-muted{color:var(--text-secondary)}

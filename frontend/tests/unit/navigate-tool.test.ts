@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Page } from "playwright";
 
-// Layer A's DNS matcher is covered by ssrf.test.ts — mock it here to always resolve to a public
-// address so these tests exercise page.goto()'s own failures, not Layer A's, without depending on
-// real network/DNS access.
 vi.mock("node:dns/promises", () => ({
   default: { lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]) },
 }));

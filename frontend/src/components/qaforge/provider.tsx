@@ -14,11 +14,6 @@ import {
 } from "@/data/qaforge";
 import type { ToastDef } from "./overlays";
 
-// Ported from the imported design project's app/app.jsx — the single place that owns run/finding/
-// approval state and the mutations screens call (startRun, approve, reject, …). The original used
-// hash-based client routing (`go('screen', params)`); here `go` maps the same calls onto real
-// App Router routes so every screen's `go(...)` call is unchanged.
-
 export type GoParams = { runId?: string };
 export type Go = (screen: string, params?: GoParams) => void;
 
@@ -97,7 +92,6 @@ export function QAForgeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // The one hinge between the investigation UI and the approval UI.
   const review = React.useCallback((run: Run | string) => go("approval", { runId: typeof run === "string" ? run : run.id }), [go]);
   const reviewFinding = React.useCallback((f: Finding) => (f?.runId ? go("approval", { runId: f.runId }) : go("findings")), [go]);
 

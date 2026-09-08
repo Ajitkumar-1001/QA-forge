@@ -24,17 +24,6 @@ async function runCli(args: string[], env: Record<string, string> = {}): Promise
   }
 }
 
-/**
- * The CLI's exit-code contract (contracts/cli-contract.md), spawned end-to-end as a real child
- * process. Covers exit 3's two paths reachable without a real LLM call: missing arguments and a
- * missing `ANTHROPIC_API_KEY` — both must fire before any browser/repo work starts, per the
- * contract's own text. Exit codes 0/1/2 need a real `generateTestPlan()` call (Anthropic), which
- * this environment has no API key for — those are exercised instead by `runQaInvestigation()`'s
- * own in-process integration tests (T030/T041/T043 in `qa-investigation.workflow.test.ts`), which
- * verify the same `Report`→exit-code mapping (`exitCodeForResult` in `run.ts`) without needing a
- * live provider call. Spawning still proves what only a real process boundary can: `--format
- * json`'s stdout carries *only* the JSON object, and the reason is duplicated onto stderr.
- */
 describe("CLI exit-code contract (contracts/cli-contract.md)", () => {
   it("exits 3 with INVALID_ARGUMENT when required flags are missing", async () => {
     const result = await runCli([]);

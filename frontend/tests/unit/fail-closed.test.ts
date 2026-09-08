@@ -1,9 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Real (WASM, in-memory) Postgres — see github-connection.test.ts for why: this test's whole
-// point is proving a Session row survives a failure untouched, which needs an actual row to
-// re-query afterward, not a mock that can't tell you whether "nothing touched it" is true.
 vi.mock("@/db/client", async () => {
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
@@ -56,7 +53,7 @@ describe("SC-006 fail-closed — caller resolution (getCallerId)", () => {
   it("a DB error while resolving the session denies the request (null) without touching the Session row", async () => {
     const { auth, getCallerId } = await import("@/lib/auth");
     const getSessionSpy = vi.spyOn(auth.api, "getSession").mockRejectedValueOnce(new Error("connection reset"));
-    // Nothing that could mutate a session (sign-out, revoke) should ever be called on this path.
+
     const revokeSpy = vi.spyOn(auth.api, "revokeSession");
 
     const result = await getCallerId(new Headers());

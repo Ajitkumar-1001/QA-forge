@@ -1,10 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// betterAuth() construction needs these; no live DB is touched — every test builds its own
-// instance against Better Auth's in-memory adapter (no Postgres exists in this environment —
-// see quickstart.md Scenario 2 / tasks.md T020 for the real-DB caveat that applies to that test,
-// not this one, since nothing here depends on Postgres-specific transaction/constraint behavior).
 process.env.DATABASE_URL ??= "postgres://x:x@localhost:5432/x";
 process.env.AUTH_ENCRYPTION_KEY ??= randomBytes(32).toString("base64");
 process.env.GITHUB_CLIENT_ID ??= "test-client-id";
@@ -43,7 +39,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** A fresh betterAuth() instance + its backing in-memory store, per test — no cross-test state. */
 async function createTestAuth(getUserInfo: () => Promise<typeof FAKE_PROFILE> = async () => FAKE_PROFILE) {
   const { betterAuth } = await import("better-auth");
   const { memoryAdapter } = await import("better-auth/adapters/memory");
@@ -52,9 +47,7 @@ async function createTestAuth(getUserInfo: () => Promise<typeof FAKE_PROFILE> = 
     socialProviders: { github: { getUserInfo?: typeof getUserInfo } };
   };
   options.socialProviders.github.getUserInfo = getUserInfo;
-  // A fake profile fixture only needs the fields the account-linking path actually reads
-  // (accountSubject reads `data.id`; the rest flows straight into `user`) — not GithubProfile's
-  // full ~35-field shape. Cast at this boundary rather than fabricate the rest.
+
   const auth = betterAuth({ ...options, baseURL: "http://localhost:3000" } as Parameters<typeof betterAuth>[0]) as unknown as {
     api: {
       signInSocial: (args: unknown) => Promise<Response>;
@@ -66,7 +59,6 @@ async function createTestAuth(getUserInfo: () => Promise<typeof FAKE_PROFILE> = 
   return { auth, db };
 }
 
-/** Drives the sign-in half of the flow — the part identical across every scenario below. */
 async function startSignIn(auth: Awaited<ReturnType<typeof createTestAuth>>["auth"]) {
   const res = await auth.api.signInSocial({
     body: { provider: "github", callbackURL: "/dashboard" },
@@ -95,7 +87,7 @@ describe("GitHub OAuth end-to-end (US1, FR-001/FR-002, mocked provider)", () => 
     expect(db.account).toHaveLength(1);
     expect(db.session).toHaveLength(1);
     const account = db.account[0] as Record<string, unknown>;
-    // T022/SEC-002: stripped at write time, not merely absent from this fake response.
+
     expect(account.accessToken).toBeUndefined();
     expect(account.refreshToken).toBeUndefined();
     expect(account.idToken).toBeUndefined();
@@ -114,8 +106,7 @@ describe("GitHub OAuth end-to-end (US1, FR-001/FR-002, mocked provider)", () => 
     expect(db.user).toHaveLength(1);
     expect(db.account).toHaveLength(1);
     expect((db.user[0] as { id: string }).id).toBe(firstUserId);
-    // T022's second fix, the one a create-only hook would have missed: the returning-sign-in
-    // path calls updateAccount, not createAccount — assert the row is still clean after it runs.
+
     expect((db.account[0] as Record<string, unknown>).accessToken).toBeUndefined();
   });
 
@@ -165,16 +156,13 @@ describe("Sign out and session termination (US3, FR-004, SC-002, quickstart Scen
       headers: new Headers({ cookie: preSignInCookie }),
       asResponse: true,
     });
-    // The full Set-Cookie header can carry both the cleared state cookie and the new session
-    // cookie — take the session one specifically (the state cookie is already spent/irrelevant).
+
     const sessionCookie = callbackRes.headers
       .getSetCookie()
       .find((c) => c.startsWith("better-auth.session_token="))!
       .split(";")[0];
     expect(db.session).toHaveLength(1);
 
-    // Captured before logout — this is exactly the cookie an attacker replaying a stolen session
-    // would have (SC-002's scenario).
     const capturedCookie = sessionCookie;
 
     const preLogoutSession = await auth.api.getSession({ headers: new Headers({ cookie: capturedCookie }) });
@@ -182,9 +170,9 @@ describe("Sign out and session termination (US3, FR-004, SC-002, quickstart Scen
 
     const signOutRes = await auth.api.signOut({ headers: new Headers({ cookie: sessionCookie }), asResponse: true });
     expect(signOutRes.status).toBeLessThan(400);
-    expect(db.session).toHaveLength(0); // FR-004: the Session row is actually deleted server-side.
+    expect(db.session).toHaveLength(0);
 
     const replayed = await auth.api.getSession({ headers: new Headers({ cookie: capturedCookie }) });
-    expect(replayed).toBeNull(); // SC-002: replaying the pre-logout cookie is unauthenticated.
+    expect(replayed).toBeNull();
   });
 });

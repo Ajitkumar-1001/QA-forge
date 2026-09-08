@@ -9,12 +9,6 @@ import { runQaInvestigation } from "../mastra/workflows/qa-investigation.workflo
 import { logEvent } from "../mastra/observability";
 import type { Report } from "../mastra/types";
 
-/**
- * CLI entrypoint (contracts/cli-contract.md). T018 built the skeleton (arg parsing, env var
- * reads, error-to-exit-code mapping); this wires in the actual test-plan generation and workflow
- * invocation, and prints the Report per `--format text`/`--format json` (FR-012).
- */
-
 type OutputFormat = "text" | "json";
 
 function detectFormat(argv: string[]): OutputFormat {
@@ -64,7 +58,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 }
 
 function reportError(format: OutputFormat, reason: string, message: string): void {
-  // Always also on stderr, so a truncated/piped stdout doesn't lose it (contracts/cli-contract.md).
+
   process.stderr.write(`${reason}: ${message}\n`);
   if (format === "json") {
     console.log(JSON.stringify({ error: { reason, message } }));
@@ -73,7 +67,6 @@ function reportError(format: OutputFormat, reason: string, message: string): voi
   }
 }
 
-/** PRD §17's per-state mockups, adapted for console output (contracts/cli-contract.md). */
 function formatReportText(objective: string, report: Report): string {
   const lines: string[] = [`QAFORGE INVESTIGATION — ${report.result}`, "", `Objective: ${objective}`, ""];
 
@@ -85,9 +78,7 @@ function formatReportText(objective: string, report: Report): string {
     const winning = report.hypotheses.find((h) => h.id === report.winningHypothesisId);
     lines.push("", `ROOT CAUSE (confidence ${report.confidence?.toFixed(2)})`, winning?.description ?? "");
   } else if (report.result === "INCONCLUSIVE") {
-    // T070, 2026-09-04 /speckit-converge (FR-011, contradicts): a VALIDATING hypothesis (checks
-    // passed, confidence never cleared the bar) was never actually rejected by any check — the
-    // old blanket heading misstated it as "ruled out" the same as a genuinely REJECTED one.
+
     const allRejected = report.hypotheses.every((h) => h.status === "REJECTED");
     lines.push(
       "",
@@ -139,9 +130,7 @@ async function main(): Promise<void> {
   }
 
   const plan = await generateTestPlan(args.objective);
-  // T052, 2026-09-04 /speckit-converge (CRITICAL, Constitution I): code re-verifies plannability
-  // independently rather than trusting plan.plannable directly — a plan that claims plannable but
-  // isn't actually well-formed is downgraded here, not passed through on the model's own say-so.
+
   if (!isPlanWellFormed(plan)) {
     const message = plan.plannable
       ? "Test plan was marked plannable but its steps are malformed (empty action or expectedOutcome text)"
@@ -161,9 +150,7 @@ async function main(): Promise<void> {
     maxIterations: args.maxSteps,
     runId,
   });
-  // T061, 2026-09-04 /speckit-converge (NFR-005): observability.ts was built but never called from
-  // anywhere until this fix. Logs the run's own outcome plus, per hypothesis, whether it carries a
-  // cited evidence source — NFR-005's three named metrics.
+
   logEvent({
     type: "terminal",
     runId,

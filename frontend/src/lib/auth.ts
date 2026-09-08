@@ -5,29 +5,6 @@ import { db } from "@/db/client";
 import * as schema from "@/db/schema";
 import { hashSessionToken } from "@/lib/crypto";
 
-// ---------------------------------------------------------------------------
-// T008 (research.md #8, Constitution Principle IV): hash Session.token before
-// it reaches Postgres.
-//
-// Better Auth's own adapter stores it raw (verified against the installed
-// better-auth@1.7.3's internal-adapter.mjs: `token: generateId(32)`, no hash)
-// and has no `databaseHooks` read-path hook — only create/update/delete row
-// hooks exist, none of which can transform a `findOne`/`findMany` WHERE
-// value. So this wraps the adapter itself: every session `create`/`update`
-// call hashes `token` before delegating, every call with a `field: "token"`
-// WHERE entry hashes the query value before delegating, and every returned
-// row gets its raw (pre-hash) token restored before it reaches Better Auth's
-// own code — so nothing outside this wrapper ever needs to know hashing
-// happens, including the cookie the sign-in flow sets.
-//
-// Scope, deliberately: this wraps the operations Better Auth's session
-// internals actually use today (create, findOne, findMany, update, delete,
-// plus count/updateMany/deleteMany/consumeOne/incrementOne for completeness,
-// all cheap to include via the same where-clause helper). It does NOT
-// recursively wrap `.transaction()`'s callback adapter — no code path
-// creates or updates a session inside a transaction today (FR-014's
-// transaction is User+Account only); add that wrapping if a future Better
-// Auth version or plugin changes that.
 type AdapterFactory = ReturnType<typeof drizzleAdapter>;
 type Adapter = ReturnType<AdapterFactory>;
 type AdapterWhere = NonNullable<Parameters<Adapter["findOne"]>[0]["where"]>;
@@ -74,14 +51,6 @@ function withHashedSessionToken(createAdapter: AdapterFactory): AdapterFactory {
   return (options) => {
     const inner = createAdapter(options);
 
-    // Every wrapped method below is generic in the interface (`create<T,R>`,
-    // `findOne<T>`, ...) but this wrapper's actual runtime shape is uniform:
-    // "hash `token` going in, delegate, restore the raw value coming out."
-    // TypeScript can't unify that uniform implementation against N separate
-    // open generic signatures — the cast at the end of this function is a
-    // single, deliberate boundary, not a general escape hatch; every method
-    // body above it is fully typed against `Adapter`'s concrete parameter
-    // shapes.
     const wrapped = {
       ...inner,
       create: async (params: Parameters<Adapter["create"]>[0]) => {
@@ -162,18 +131,6 @@ function withHashedSessionToken(createAdapter: AdapterFactory): AdapterFactory {
   };
 }
 
-// ---------------------------------------------------------------------------
-
-// SEC-002: strip every OAuth-token-shaped field before an `account` row is
-// written — GitHub's sign-in token is not persisted at all. This isn't only
-// the first-sign-up path (`create`): a *returning* sign-in calls
-// `internalAdapter.updateAccount` with fresh tokens whenever
-// `account.updateAccountOnSignIn` is enabled (Better Auth's own default) —
-// stripping only on `create` leaks the raw token on every second-and-later
-// sign-in. `updateAccountOnSignIn: false` below is the primary fix (the
-// update call never happens, since we never sync tokens we don't keep
-// anyway); this hook is defense-in-depth for `update` too, and for
-// `linkAccount` (also routed through `create`).
 async function stripOAuthTokenFields<T extends Record<string, unknown>>(account: T) {
   return {
     data: {
@@ -187,24 +144,18 @@ async function stripOAuthTokenFields<T extends Record<string, unknown>>(account:
   };
 }
 
-/**
- * Extracted so tests (T019/T020) can construct an equivalent `betterAuth()`
- * instance against a swapped-in adapter (Better Auth's in-memory adapter —
- * no live Postgres exists to test against here) without duplicating this
- * config and risking it drifting from what actually ships.
- */
 export function buildAuthOptions({ database }: { database: ReturnType<typeof drizzleAdapter> }) {
   return {
     database,
     socialProviders: {
-      // FR-001: GitHub OAuth is the only sign-in method — no other provider is configured.
+
       github: {
         clientId: process.env.GITHUB_CLIENT_ID ?? "",
         clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
       },
     },
     account: {
-      // See stripOAuthTokenFields above — we never sync a token we don't persist.
+
       updateAccountOnSignIn: false,
     },
     databaseHooks: {
@@ -214,20 +165,15 @@ export function buildAuthOptions({ database }: { database: ReturnType<typeof dri
       },
     },
     session: {
-      expiresIn: 60 * 60 * 24 * 30, // NFR-001: 30 days.
-      updateAge: 60 * 60 * 24, // NFR-001: sliding refresh, at most once per 24h (Better Auth's own default — set explicitly for traceability to the requirement).
+      expiresIn: 60 * 60 * 24 * 30,
+      updateAge: 60 * 60 * 24,
     },
-    // SEC-010: explicit, not left at a library default. Set via TRUSTED_ORIGINS
-    // (comma-separated) once T004's fixed staging/production domains exist —
-    // empty until then, which fails closed rather than trusting nothing/everything.
+
     trustedOrigins: (process.env.TRUSTED_ORIGINS ?? "")
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean),
-    // UX-003: explicit, not left at a library default (same spirit as SEC-010) — every
-    // callback failure redirects to the sign-in page's own `?error=` handling
-    // (src/app/sign-in/page.tsx), which selects copy from a closed set rather than
-    // rendering this raw code.
+
     onAPIError: {
       errorURL: "/sign-in",
     },
@@ -241,35 +187,19 @@ export const auth = betterAuth(
       drizzleAdapter(db, {
         provider: "pg",
         schema,
-        // FR-014: first-sign-in User+Account creation needs a real DB transaction —
-        // Better Auth's own adapter default is `false` (sequential, non-transactional).
-        // Better Auth's own OAuth sign-up flow (oauth2/link-account.mjs) already wraps
-        // User+Account creation in `runWithTransaction` — this flag is what makes that
-        // a real transaction instead of a no-op; no extra hook needed for FR-014 itself.
+
         transaction: true,
       }),
     ),
   }),
 );
 
-/**
- * FR-015: server-only session-resolution primitive. A future tRPC procedure's
- * context/middleware (a separate, later feature) calls this to populate
- * `callerId` before any `src/lib/repositories/**` method runs — this feature
- * does not build that middleware itself (contracts/auth-routes.md).
- *
- * Takes `headers` explicitly rather than calling `next/headers()` internally
- * so it's callable from both a Next.js request context and a plain unit test
- * (T016) without mocking Next's module system.
- */
 export async function getCallerId(headers: Headers): Promise<string | null> {
   try {
     const session = await auth.api.getSession({ headers });
     return session?.user.id ?? null;
   } catch {
-    // SEC-006: any infrastructure error resolving the caller is treated as
-    // denied for this request only — never authenticated, and this does not
-    // touch the Session row/cookie.
+
     return null;
   }
 }

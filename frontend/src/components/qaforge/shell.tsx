@@ -20,19 +20,9 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-// Ported from the imported design project's component bundle (components/{shell,ui/navigation}/**).
-// AppSidebar now composes the real shadcn/ui Sidebar primitive (src/components/ui/sidebar.tsx)
-// instead of a hand-rolled qf-sidebar — collapsed/expanded state and mobile behavior come from
-// SidebarProvider (wired in app-shell.tsx), not local props.
-
-// ---------------------------------------------------------------------------
-// shell/AppSidebar (QAForge nav)
-// ---------------------------------------------------------------------------
-
 export interface SidebarNavItem { id: string; label: string; icon?: string; href: string; count?: number }
 export interface SidebarNavGroup { label?: string; items: SidebarNavItem[] }
 
-/** QAForge primary navigation with the fixed IA (design.md §14/§47). */
 export const APP_NAV: SidebarNavGroup[] = [
   { items: [{ id: "dashboard", label: "Overview", icon: "LayoutDashboard", href: "/dashboard" }] },
   { label: "Runs", items: [
@@ -110,10 +100,6 @@ export function AppSidebar({ activeId = "dashboard", counts = {}, workspace = { 
   );
 }
 
-// ---------------------------------------------------------------------------
-// shell/TopBar
-// ---------------------------------------------------------------------------
-
 const ENV_TONE: Record<string, "neutral" | "active" | "error"> = { LOCAL: "neutral", PREVIEW: "neutral", STAGING: "active", PRODUCTION: "error" };
 
 export function TopBar({ breadcrumb = [], environment, onSearch, hasNotifications = false, onNotifications, user = { name: "Dana Okafor" }, onUser, actions, className = "" }: {
@@ -153,10 +139,6 @@ export function TopBar({ breadcrumb = [], environment, onSearch, hasNotification
     </header>
   );
 }
-
-// ---------------------------------------------------------------------------
-// shell/CommandMenu — ⌘K palette with the fixed QAForge action set (design.md §37)
-// ---------------------------------------------------------------------------
 
 export function commandGroups(): CommandGroup[] {
   return [

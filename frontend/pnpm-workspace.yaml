@@ -1,6 +1,6 @@
 allowBuilds:
-  '@prisma/client': false # transitive dep of @better-auth/cli (schema-gen tooling only) — unused, this project is Postgres/Drizzle-only
-  better-sqlite3: false # same — unused, no SQLite in this project
+  '@prisma/client': false
+  better-sqlite3: false
   esbuild: true
   sharp: false
   unrs-resolver: false

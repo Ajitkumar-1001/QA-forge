@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// See tests/integration/auth-flow.test.ts for the same env-var/dynamic-import setup rationale.
 process.env.DATABASE_URL ??= "postgres://x:x@localhost:5432/x";
 process.env.AUTH_ENCRYPTION_KEY ??= randomBytes(32).toString("base64");
 process.env.GITHUB_CLIENT_ID ??= "test-client-id";
@@ -38,17 +37,7 @@ describe("FR-014 — first-sign-in User+Account creation (quickstart Scenario 2)
     "two near-simultaneous first-sign-in attempts for the same new GitHub identity produce " +
       "exactly one User row and one Account row, never an orphaned User",
     async () => {
-      // CAVEAT, read before trusting this test alone: there is no live Postgres in this
-      // environment (confirmed repeatedly across this feature's implementation — see the T004
-      // status in tasks.md), so this exercises Better Auth's in-memory adapter, not a real
-      // database. Better Auth's OWN app-level dedup (`findAccountOwnerByKey`/`findUserByEmail`
-      // in oauth2/link-account.mjs, run before either attempt writes) is what this test can
-      // actually verify — it cannot reproduce genuine multi-connection Postgres row-locking
-      // under `transaction: true` (drizzleAdapter, src/lib/auth.ts), since Node's single-threaded
-      // event loop and the memory adapter's sequential `.transaction()` fallback aren't the same
-      // failure mode a real race exercises. This is real coverage, not a substitute for the
-      // integration/e2e pass quickstart.md Scenario 2 expects against an actual Postgres
-      // instance — flagged here rather than silently presented as equivalent proof.
+
       const { betterAuth } = await import("better-auth");
       const { memoryAdapter } = await import("better-auth/adapters/memory");
       const db = { user: [], session: [], account: [], verification: [] } as Record<string, Record<string, unknown>[]>;
@@ -70,8 +59,6 @@ describe("FR-014 — first-sign-in User+Account creation (quickstart Scenario 2)
         return { state, cookie };
       }
 
-      // Two independent tabs, each starting its own sign-in (own PKCE state) for the SAME
-      // GitHub identity, then racing the callback step against each other.
       const [a, b] = await Promise.all([startSignIn(), startSignIn()]);
       await Promise.all([
         auth.api.callbackOAuth({ params: { id: "github" }, query: { code: "code-a", state: a.state }, headers: new Headers({ cookie: a.cookie }), asResponse: true }),
@@ -80,7 +67,7 @@ describe("FR-014 — first-sign-in User+Account creation (quickstart Scenario 2)
 
       expect(db.user).toHaveLength(1);
       expect(db.account).toHaveLength(1);
-      // Never an orphaned User with no Account (Edge Cases).
+
       expect((db.account[0] as { userId: string }).userId).toBe((db.user[0] as { id: string }).id);
     },
   );

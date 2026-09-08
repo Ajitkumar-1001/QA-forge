@@ -14,8 +14,6 @@ import type {
 import type { Evidence } from "../types";
 import { toPromptContext, type ToolResult } from "../prompt-context";
 
-/** PRD §9.7's recommended bar — a Recommendation, not yet load-tested; the behavior (a bar
- * exists and every check must pass) is the requirement, not this exact number. */
 const CONFIDENCE_BAR = 0.7;
 
 export const validatorAgent = new Agent({
@@ -35,10 +33,6 @@ export const validatorAgent = new Agent({
   model: validatorModel,
 });
 
-/** Code — not the LLM's holistic judgment — decides whether a single check holds (Constitution
- * Principle I). Content matching is string-based against `Evidence.content`, a deliberate
- * simplification over a full DOM/HTTP parser — sufficient for the closed-form StepCriterion
- * shapes this feature defines. */
 function evaluateCriterion(criterion: StepCriterion, content: string): boolean {
   switch (criterion.kind) {
     case "url":
@@ -67,15 +61,6 @@ function checkPasses(check: ValidationCheck, evidenceById: Map<string, Evidence>
   return evaluateCriterion(check.criterion, evidence.content);
 }
 
-/**
- * Code decides SUPPORTED/REJECTED/VALIDATING from the checks the Validator Agent proposed
- * (FR-010, Constitution Principle I) — `status = REJECTED` iff any check fails; `SUPPORTED` iff
- * every check passes AND the confidence bar is met; otherwise the hypothesis stays non-terminal
- * (data-model.md). Requires at least one `structured` (code-evaluated) check to reach either
- * terminal outcome (T053, 2026-09-04 /speckit-converge, CRITICAL) — an all-`semantic` check set is
- * entirely the model's own self-report; code contributes nothing but a trivial AND over LLM
- * claims, which is not "deterministic code evaluating structured evidence" per Constitution I.
- */
 export function evaluateHypothesis(
   candidate: HypothesisCandidate,
   checks: ValidationCheck[],
@@ -100,16 +85,9 @@ export function evaluateHypothesis(
     status = "VALIDATING";
   }
 
-  // T059, 2026-09-04 /speckit-converge: persists code's own per-check outcome (`evaluated`), not
-  // the bare proposed `checks` — a REJECTED hypothesis's report data can now state which specific
-  // check(s) failed and why, not only what was proposed.
   return { id: crypto.randomUUID(), ...candidate, status, checks: evaluated };
 }
 
-/**
- * The Validator Agent's structured-output call (FR-010) — proposes checks only.
- * `evaluateHypothesis` above is where code, not the model, decides the verdict.
- */
 export async function proposeChecks(
   candidate: HypothesisCandidate,
   evidence: ToolResult[],

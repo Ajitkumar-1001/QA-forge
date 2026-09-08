@@ -11,19 +11,13 @@ const execFileAsync = promisify(execFile);
 
 export interface CandidateFile {
   path: string;
-  /** 0.0–1.0, the relevance score against the observed failure (PRD §9.5). */
+
   relevance: number;
   excerpt: string;
 }
 
-/** PRD §9.5's minimum relevance bar — empty result over a weak guess (Constitution Principle I). */
 export const RELEVANCE_FLOOR = 0.4;
 
-/**
- * Omits any candidate that doesn't clear the relevance floor, rather than including a weak guess
- * (FR-007). A run with zero qualifying candidates returns an empty array — the caller must still
- * be able to produce hypotheses from runtime evidence alone.
- */
 export function filterByRelevanceFloor(candidates: CandidateFile[]): CandidateFile[] {
   return candidates.filter((candidate) => candidate.relevance >= RELEVANCE_FLOOR);
 }
@@ -32,17 +26,9 @@ const TEXT_FILE_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rb", ".go", ".java",
   ".rs", ".php", ".json", ".md", ".yml", ".yaml", ".html", ".css",
 ]);
-/** Named but not tuned (spec.md Assumptions — resource bounds beyond step count, deferred).
- * Also NFR-001's "investigation depth" bound (T071, 2026-09-05 /speckit-converge): a deliberate
- * match-count substitute for a directory-hop cap, documented in spec.md's Assumptions section —
- * does not bound directories visited before this cap engages, only matches collected. */
+
 const MAX_FILES_SCANNED = 500;
 
-/**
- * `GIT_ASKPASS` script that reads the token from its own environment at invocation time — the
- * script FILE never contains the secret, and the token never appears in `git`'s argv or
- * `.git/config` (research.md §6, Constitution Principle IV).
- */
 async function writeAskPassScript(): Promise<{ scriptPath: string; scriptDir: string }> {
   const scriptDir = fs.mkdtempSync(path.join(os.tmpdir(), "qaforge-askpass-"));
   const scriptPath = path.join(scriptDir, "askpass.sh");
@@ -111,8 +97,6 @@ function extractKeywords(text: string): string[] {
   );
 }
 
-/** Deterministic, code-decided relevance score (Constitution Principle I) — the fraction of
- * search keywords a file's content contains. Not an LLM judgment call. */
 function scoreRelevance(content: string, keywords: string[]): number {
   if (keywords.length === 0) return 0;
   const lowerContent = content.toLowerCase();
@@ -126,13 +110,6 @@ const investigateInputSchema = z.object({
   searchHistory: z.array(z.string()).default([]),
 });
 
-/**
- * Repository Investigator tool (FR-007, SEC-003, SEC-004, research.md §6): `GIT_ASKPASS`-
- * authenticated shallow clone into an `fs.mkdtempSync()` temp dir, keyword-scored search, the
- * 0.4 relevance floor, self-delete in `finally` regardless of outcome — no write path exists
- * anywhere in this function (SEC-003). Consumes `searchHistory` (already-used keywords) so a
- * later investigation round narrows its search rather than repeating it.
- */
 export function createInvestigateTool(githubToken?: string) {
   return createTool({
     id: "investigate-repository",

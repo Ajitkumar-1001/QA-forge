@@ -4,13 +4,6 @@ import { z } from "zod";
 import { createTool } from "@mastra/core/tools";
 import type { BrowserContext, Page, Response } from "playwright";
 
-/**
- * SSRF Layer A (UX only, research.md §4): resolve the hostname and reject anything outside
- * ipaddr.js's `'unicast'` range classification — covers loopback, link-local (including the
- * cloud-metadata range), private, reserved, carrier-grade-NAT, and IPv4-mapped-IPv6 uniformly,
- * without an enumerated, separately-maintained CIDR list (SEC-001, D11, resolved 2026-09-04
- * `/speckit-clarify`). Fails closed on any DNS error.
- */
 export async function isAddressAllowed(hostname: string): Promise<boolean> {
   try {
     const addresses = await dns.lookup(hostname, { all: true });
@@ -21,10 +14,6 @@ export async function isAddressAllowed(hostname: string): Promise<boolean> {
   }
 }
 
-/**
- * Thrown when Layer A/B refuses a navigation. Read by the CLI's top-level catch handler
- * (run.ts) to pick the exit-3 reason code (contracts/cli-contract.md's `APP_UNREACHABLE`).
- */
 export class SsrfDeniedError extends Error {
   readonly reason = "APP_UNREACHABLE" as const;
 
@@ -34,7 +23,6 @@ export class SsrfDeniedError extends Error {
   }
 }
 
-/** Full per-URL check: valid http(s) URL, and its hostname resolves only to allowed addresses. */
 export async function isUrlAllowed(rawUrl: string): Promise<boolean> {
   let url: URL;
   try {
@@ -46,26 +34,11 @@ export async function isUrlAllowed(rawUrl: string): Promise<boolean> {
   return isAddressAllowed(url.hostname);
 }
 
-/** T062, 2026-09-04 /speckit-converge (SEC-001, HIGH): lets a caller distinguish a Layer B denial
- * (a redirect hop, or any mid-scenario navigation an action triggered) from an ordinary step
- * failure — previously the underlying `page.goto()`/action call just threw whatever generic
- * Playwright network error `Fetch.failRequest` produces, indistinguishable from a real
- * application bug and never mapped to `APP_UNREACHABLE`. */
 export interface NavigationGuard {
-  /** The most recently denied URL, if any — read and cleared in one step so a later, unrelated
-   * failure doesn't get misattributed to a stale denial. */
+
   consumeBlockedUrl(): string | null;
 }
 
-/**
- * SSRF Layer B (research.md §4): per-hop enforcement via CDP `Fetch.requestPaused` — NOT
- * `page.route()`, which is empirically proven not to fire on redirect hops on a main-frame
- * navigation (microsoft/playwright#34994). The CDP `Fetch` domain fires once per hop, so this
- * re-checks every redirect, not only the initially supplied URL (SEC-001, SC-004). Installed on
- * every new page/popup so it covers the whole context lifetime, not just the first `page.goto()`
- * call this tool makes — a step that triggers navigation via `actions.tool.ts`'s `click`/`submit`
- * is covered too.
- */
 export async function installNavigationGuard(context: BrowserContext): Promise<NavigationGuard> {
   let blockedUrl: string | null = null;
   const guardPage = async (page: Page) => {
@@ -87,9 +60,7 @@ export async function installNavigationGuard(context: BrowserContext): Promise<N
     });
   };
   context.on("page", (page) => {
-    // Fire-and-forget: a page can close (e.g. the browser tearing down right after an initial
-    // navigation is denied) before this CDP attach completes — that's "nothing left to guard",
-    // not a real failure, so it must not surface as an unhandled rejection.
+
     guardPage(page).catch(() => {});
   });
   for (const page of context.pages()) {
@@ -104,8 +75,6 @@ export async function installNavigationGuard(context: BrowserContext): Promise<N
   };
 }
 
-/** Walks `redirectedFrom()` backward from the final response to build the full redirect chain
- * (research.md §3) — for evidence.tool.ts (T031) to attach to a failed step's evidence. */
 export function getRedirectChain(response: Response | null): string[] {
   if (!response) return [];
   const chain: string[] = [response.url()];
@@ -119,14 +88,6 @@ export function getRedirectChain(response: Response | null): string[] {
 
 const navigateInputSchema = z.object({ url: z.string() });
 
-/**
- * The navigation tool the Browser Execution Agent calls — navigation only; does NOT resolve or
- * execute a Step's action (that's `actions.tool.ts`). Assumes `installNavigationGuard` (Layer B)
- * has already been installed on the page's context and the launching browser used SSRF Layer C's
- * validating proxy (`ssrf-proxy.ts`) — this tool performs Layer A's pre-check plus the actual
- * `page.goto()`. `page.goto()` does not throw on 4xx/5xx, so status is surfaced explicitly rather
- * than treated as a thrown error (research.md §3).
- */
 export function createNavigateTool(page: Page) {
   return createTool({
     id: "navigate",

@@ -1,28 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-/**
- * Three sub-tests of the same real Mastra workflow, differing only in what the mocked
- * agents/tools return — FR-004, FR-009–FR-011, SC-002, SC-006, D4. Per plan.md's own file
- * description: "real Mastra workflow, mocked model, fake browser tool." The `dountil`/`.branch()`
- * loop, `investigation-round.step.ts`'s sequencing, and `validator.agent.ts`'s
- * code-decides-the-verdict logic are all REAL and unmocked in every sub-test — only the
- * LLM-touching agent calls and the repository investigator are replaced with fakes, so no test
- * here costs an Anthropic call or needs a real git remote.
- *
- * `executeStepAction` (the Browser Execution Agent) is mocked to a no-op rather than faked at the
- * Playwright level — it internally constructs a real Mastra `Agent`, and calling that would need
- * an Anthropic call. Each step's own success/failure is instead driven by its criteria genuinely
- * matching (or not) the real page navigated to.
- *
- * Navigation target is `https://example.com` (a real, stable, network-dependent request), not
- * `tests/integration/fixtures/http-server.ts`'s local server — SEC-001's SSRF deny-list is
- * absolute (no opt-out, confirmed 2026-09-04 `/speckit-clarify`) and correctly refuses any
- * loopback target, including the local fixture server, through this unmocked path. These tests
- * therefore require real network access; T020–T023's unit tests already cover the fixture
- * server's redirect-chain/credential-body scenarios against `navigate.tool.ts`'s pure functions
- * directly, where SSRF enforcement is exactly what's being tested rather than an obstacle to it.
- */
-
 vi.mock("@/mastra/agents/browser-execution.agent", () => ({
   executeStepAction: vi.fn().mockResolvedValue(undefined),
 }));
@@ -38,12 +15,7 @@ vi.mock("@/mastra/agents/validator.agent", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/mastra/agents/validator.agent")>();
   return {
     ...actual,
-    // Structured checks against a REAL, real-id-cited piece of evidence (T050/T053, 2026-09-04
-    // /speckit-converge) — `evaluateHypothesis` (kept real, from `actual`) now requires at least
-    // one structured check to reach a terminal verdict, so an all-semantic mock (this file's
-    // previous approach) can no longer resolve SUPPORTED/REJECTED at all. T056's evidence.tool.ts
-    // fix guarantees an HTTP-type "currentUrl" evidence entry always exists, containing the real
-    // page URL — used here as the guaranteed-present, guaranteed-matchable evidence item.
+
     proposeChecks: vi.fn(
       async (
         candidate: { confidence: number; description: string },
@@ -63,8 +35,6 @@ vi.mock("@/mastra/agents/validator.agent", async (importOriginal) => {
   };
 });
 
-// Vitest only allows referencing a variable inside a hoisted `vi.mock()` factory when its name
-// starts with `mock` — needed here so later blocks can assert on call counts (T043/T044).
 const mockInvestigateExecute = vi.fn().mockResolvedValue({
   candidateFiles: [{ path: "middleware.ts", relevance: 0.9, excerpt: "checks cookies.session" }],
   searchHistory: ["session"],
@@ -126,9 +96,7 @@ describe("qa-investigation workflow — INCONCLUSIVE sub-test (loop budget exhau
   let report: Awaited<ReturnType<typeof runQaInvestigation>>;
 
   beforeAll(async () => {
-    // Every hypothesis, every round, fails its own check — the loop can never reach SUPPORTED and
-    // must exhaust its budget (maxIterations: 2) into INCONCLUSIVE (FR-011, D4) rather than
-    // falling back to the strongest rejected candidate (User Story 2's own guarantee).
+
     vi.mocked(generateHypotheses).mockResolvedValue([
       { description: "Hypothesis A — never confirmed.", confidence: 0.4, evidenceLinks: [] },
       { description: "Hypothesis B — also never confirmed.", confidence: 0.5, evidenceLinks: [] },

@@ -1,9 +1,3 @@
-// Sample data for the QAForge console (ported from the imported design project's app/data.js).
-// Sequenced to WORKFLOW.md: 5-step journey, five-agent pipeline (no Supervisor row),
-// report branch PASS | FAIL | FAIL(INCONCLUSIVE) | ERROR, and a separate Approval Draft.
-// ponytail: this is fixture data for the console UI — the mastra backend (src/mastra) is not wired
-// to it yet. Replace with real fetches when the API surface exists; the shapes below are the contract.
-
 import { z } from "zod";
 
 export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
@@ -15,12 +9,6 @@ export type FindingStatus =
   | "RESOLVED"
   | "DISMISSED";
 
-// Matches src/mastra/types.ts's RunStatus exactly — these are the only statuses the real backend
-// can ever produce.
-// No CANCELLED here: PRD §14/§15 specifies testRun.cancel as a real capability, but it signals
-// a D7 background-worker job via `workflowId` — infrastructure data-model.md explicitly scopes out
-// of 001 entirely. There's no in-flight job to cancel yet, so this is an interim narrowing to what
-// 001 can actually produce today, not a decision that cancellation is unwanted.
 export const runStatusSchema = z.enum([
   "PLANNING",
   "RUNNING",
@@ -31,7 +19,6 @@ export const runStatusSchema = z.enum([
 ]);
 export type RunStatus = z.infer<typeof runStatusSchema>;
 
-// Matches src/mastra/types.ts's ErrorReason exactly.
 export const errorReasonSchema = z.enum([
   "LIMIT_EXCEEDED",
   "APP_UNREACHABLE",
@@ -41,7 +28,6 @@ export const errorReasonSchema = z.enum([
 ]);
 export type ErrorReason = z.infer<typeof errorReasonSchema>;
 
-// Matches src/mastra/types.ts's ReportResult exactly.
 export const reportResultSchema = z.enum(["PASS", "FAIL", "INCONCLUSIVE"]);
 export type ReportResult = z.infer<typeof reportResultSchema>;
 
@@ -227,9 +213,6 @@ export interface ChartPoint {
   tone?: string;
 }
 
-// `retryable` and `remediation` per vault-qa/PRD.md §20's error-mapping table — the sole authority
-// for retry semantics (src/mastra/types.ts only names the reason codes, it carries no retryable
-// flag of its own).
 export const REASON_CODES: Record<ErrorReason, { text: string; retryable: boolean; detail: string; remediation?: string }> = {
   LIMIT_EXCEEDED: {
     text: "The run exceeded its configured step and loop budget before completing.",
@@ -274,7 +257,6 @@ export const runs: Run[] = [
   { id: "QF-0208", objective: "Expired session redirects to /login and preserves the return URL", plan: "Authentication Regression", repository: "qa-forge/web", branch: "main", commit: "0c9e77b", environment: "STAGING", status: "FAILED", report: "INCONCLUSIVE", hypothesesRejected: 3, findings: 1, criticalFindings: 0, duration: "03:41", triggeredBy: "CI · main", started: "Sep 1", startedFull: "Sep 1 09:30", elapsed: "03:41", startedAt: 208 },
 ];
 
-// The plan. Five steps, one per user action — the agent pipeline is NOT in this list.
 export const steps: Step[] = [
   { id: "s1", title: "Open login page", state: "passed", agent: "Browser Agent", duration: "1.8s", evidenceCount: 1, detail: [{ key: "URL", value: "https://staging.qaforge.dev/login" }, { key: "Viewport", value: "1440×900 · Chrome" }] },
   { id: "s2", title: "Enter credentials", state: "passed", agent: "Browser Agent", duration: "0.9s", evidenceCount: 1, detail: [{ key: "Account", value: "qa+0218@qaforge.dev" }, { key: "Source", value: "vault: qa/staging" }] },
@@ -283,7 +265,6 @@ export const steps: Step[] = [
   { id: "s5", title: "Navigate dashboard", state: "failed", agent: "Browser Agent", duration: "1.2s", evidenceCount: 3, defaultOpen: true, detail: [{ key: "Expected", value: "/dashboard" }, { key: "Observed", value: "/login" }, { key: "Assertion", value: "URL pathname equals /dashboard within 5s after login" }] },
 ];
 
-// Agent Activity panel — this exact order (§8–9). The QA Supervisor is the graph, not a row.
 export const pipeline: PipelineAgent[] = [
   { id: "browser", name: "Browser Agent", icon: "Bot", op: "Executing planned journey…", result: "5 steps executed · 1 failed", state: "failed" },
   { id: "evidence", name: "Evidence Agent", icon: "Camera", op: "Collecting runtime evidence…", result: "19 artifacts collected" },
@@ -304,7 +285,6 @@ export const findings: Finding[] = [
   { id: "F-0396", severity: "HIGH", title: "Return URL dropped after session expiry redirect", repository: "qa-forge/web", runId: "QF-0208", status: "OPEN", confidence: 38, created: "Sep 1", inconclusive: true },
 ];
 
-// Human approval (§11). PENDING → APPROVED | REJECTED | EXPIRED. 24h expiry. No suspended run state.
 export const initialApprovals: Record<string, Approval> = {
   "QF-0216": { status: "PENDING", findingId: "F-0409", repository: "qa-forge/api", requested: "Today 12:26", expires: "Tomorrow 12:26", expiresIn: "21h 08m" },
   "QF-0214": { status: "APPROVED", findingId: "F-0406", repository: "qa-forge/api", requested: "Yesterday 22:31", decidedBy: "Marcus Lee", decided: "Yesterday 22:40", issue: "qa-forge/api#318" },
@@ -396,7 +376,6 @@ export const environments: Environment[] = [
   { id: "PRODUCTION", url: "https://app.qaforge.dev", repository: "qa-forge/web", branch: "release/*", credentials: "vault: qa/prod-readonly", browser: "read-only session", network: "app.qaforge.dev only", policy: "DENY" },
 ];
 
-// Repository access is read-only everywhere. The one approved write is issue creation (§12).
 export const initialPolicies: Record<"STAGING" | "PRODUCTION", PolicyRow[]> = {
   STAGING: [{ action: "Browser navigation", verdict: "ALLOW" }, { action: "Form submission", verdict: "ALLOW" }, { action: "Create test users", verdict: "ALLOW" }, { action: "Read repository", verdict: "ALLOW" }, { action: "Create GitHub issue", verdict: "REQUIRE APPROVAL" }, { action: "Push code", verdict: "DENY" }],
   PRODUCTION: [{ action: "Browser navigation", verdict: "ALLOW" }, { action: "Form submission", verdict: "REQUIRE APPROVAL" }, { action: "Create test users", verdict: "DENY" }, { action: "Delete data", verdict: "DENY" }, { action: "Read repository", verdict: "ALLOW" }, { action: "Create GitHub issue", verdict: "REQUIRE APPROVAL" }, { action: "Push code", verdict: "DENY" }],
@@ -415,7 +394,6 @@ export const runsPerDay: ChartPoint[] = [{ label: "Aug 29", value: 14 }, { label
 
 export const LIVE_STATUSES: RunStatus[] = ["PLANNING", "RUNNING", "INVESTIGATING"];
 
-// The drafted GitHub issue shown on the Approval Draft screen.
 export function draftIssue(f: Finding, run?: Run) {
   const r = run || ({} as Partial<Run>);
   const title = f.title;

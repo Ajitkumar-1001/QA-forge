@@ -7,9 +7,6 @@ import { ActionRiskBadge, ConfidenceMeter, EvidenceReference, RunStatusBadge, Se
 import { useQAForge, LIVE_STATUSES } from "../provider";
 import type { Finding } from "@/data/qaforge";
 
-// Ported from the imported design project's app/screens/mobile.jsx.
-// Mobile is a review/approve subset of the same app, not the full console (design.md).
-
 function MobileHeader({ title, onBack, right }: { title: string; onBack?: () => void; right?: React.ReactNode }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, height: 52, padding: "0 16px", borderBottom: "1px solid var(--border)", background: "var(--surface-1)", flexShrink: 0 }}>

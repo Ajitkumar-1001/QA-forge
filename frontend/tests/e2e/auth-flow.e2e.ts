@@ -1,11 +1,5 @@
 import { expect, test } from "playwright/test";
 
-// Fixture/mocked-session half (quickstart Scenario 8) — no live GitHub round trip, runnable
-// against any local dev server (this file assumes one is already running at
-// PLAYWRIGHT_BASE_URL / playwright.config.ts's default http://localhost:3210 — it does not start
-// one itself). The live-staging half (real cookie attributes, real sign-out invalidation) is
-// tests/e2e/auth-flow.live.e2e.ts — sequenced after T004/T005 exist, not runnable here.
-
 test.describe("UX-001/UX-002 — signed-out landing", () => {
   test("has exactly one action, reachable and activatable by keyboard, with a visible focus state", async ({ page }) => {
     await page.goto("/sign-in");
@@ -41,8 +35,7 @@ test.describe("UX-003 — callback failure states (mocked server-validated condi
   for (const { error, expectedTitle } of cases) {
     test(`?error=${error} renders the "${expectedTitle}" card, never the raw code, and still offers the retry action`, async ({ page }) => {
       await page.goto(`/sign-in?error=${error}`);
-      // Not getByRole("alert") alone — Next.js's own route-change announcer
-      // (#__next-route-announcer__) also has role="alert", unrelated to this feature.
+
       await expect(page.locator('[data-slot="alert"]')).toContainText(expectedTitle);
       await expect(page.getByText(error, { exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
@@ -63,8 +56,3 @@ test.describe("UX-007 — accessibility across the sign-in screen", () => {
     expect(box?.height).toBeGreaterThanOrEqual(44);
   });
 });
-
-// Not covered here: UX-005's session-expiry banner (SessionExpiredBanner/ProtectedContentSkeleton,
-// src/components/session-expired-banner.tsx) — it's a reusable component with no live page
-// rendering it yet (no authenticated/protected page exists in this repo — see tasks.md's T023/T037
-// notes), so there's no URL for Playwright to visit that would exercise it.

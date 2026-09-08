@@ -27,7 +27,7 @@ describe("runInvestigationRound — composite step sequencing (research.md §2)"
   it("threads searchHistory forward so a later round can narrow its search", async () => {
     const deps = {
       investigateRepo: vi.fn(async (searchHistory: string[]) => {
-        // The round must pass in what was already searched.
+
         expect(searchHistory).toEqual(["round-1-query"]);
         return { candidateFiles: [], searchHistory: [...searchHistory, "round-2-query"] };
       }),
@@ -47,7 +47,7 @@ describe("runInvestigationRound — composite step sequencing (research.md §2)"
     const deps = {
       investigateRepo: vi.fn(async () => ({ candidateFiles: [], searchHistory: [] })),
       createHypotheses: vi.fn(async (_files: unknown[], triedHypotheses: unknown[]) => {
-        // The round must pass in what was already tried, so it isn't proposed again.
+
         expect(triedHypotheses).toEqual(["already-rejected"]);
         return ["new-hypothesis"];
       }),

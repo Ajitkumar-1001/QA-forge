@@ -3,9 +3,6 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "
 import { SignInButton } from "@/components/sign-in-button";
 import { getOAuthErrorCopy } from "@/lib/oauth-error-copy";
 
-// UX-001: single-purpose signed-out landing, exactly one action (FR-001) — the only sign-in
-// method offered. UX-003: a failed callback lands back here with `?error=<code>`; the copy shown
-// is picked server-side from a closed set (getOAuthErrorCopy), never the raw query value.
 export default async function Page(props: PageProps<"/sign-in">) {
   const { error } = await props.searchParams;
   const errorCopy = getOAuthErrorCopy(typeof error === "string" ? error : undefined);

@@ -9,11 +9,6 @@ const plannedStepSchema = z.object({
   failureCriteria: stepCriterionSchema,
 });
 
-/**
- * The Test Planner Agent's structured output (FR-002, PRD §9.2). `plannable: false` is the
- * explicit "can't decompose this objective" branch — the harness MUST report this rather than
- * executing a best-guess plan (Constitution Principle I).
- */
 export const testPlanSchema = z.discriminatedUnion("plannable", [
   z.object({ plannable: z.literal(false), reason: z.string() }),
   z.object({ plannable: z.literal(true), steps: z.array(plannedStepSchema).min(1) }),

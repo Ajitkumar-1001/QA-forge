@@ -2,24 +2,11 @@ import fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { Page } from "playwright";
 
-/**
- * Security hardening check (Constitution Principle IV) — two independent guarantees:
- *
- * 1. `GIT_ASKPASS` keeps the GitHub PAT out of `ps`/`/proc` during a clone. Verified statically
- *    against the exact `git` argv and env `execFile` would receive — the reliable way to prove
- *    "the token can never appear in `git`'s own argv" is to show it never gets constructed that
- *    way in the first place, rather than racing a real `ps` invocation against a real subprocess.
- * 2. `actions.tool.ts`'s same-origin guard blocks a credential fill after a cross-origin redirect
- *    (the phishing gap `expert-system-design`'s review found and closed, 2026-09-04).
- */
-
 interface ExecFileOptions {
   env: Record<string, string>;
 }
 type ExecFileCallback = (error: Error | null, result: { stdout: string; stderr: string }) => void;
 
-/** Captures the askpass script's content at call time, before `investigate.tool.ts`'s own
- * `finally` deletes it (cleanup runs immediately once this callback fires). */
 let capturedAskPassContent: string | undefined;
 
 const mockExecFile = vi.fn(

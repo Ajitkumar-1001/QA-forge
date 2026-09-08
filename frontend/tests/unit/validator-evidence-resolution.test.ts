@@ -4,15 +4,6 @@ import type { ValidationCheck } from "@/mastra/schemas/validation.schema";
 import type { HypothesisCandidate } from "@/mastra/schemas/hypothesis.schema";
 import type { Evidence } from "@/mastra/types";
 
-/**
- * T050, 2026-09-04 `/speckit-converge` (CRITICAL) — before this fix, no prompt ever showed the
- * model a real `Evidence.id`, so a structured check's `evidenceId` could never resolve against
- * `evidenceById`, and `evaluateHypothesis` rejected the hypothesis regardless of whether the
- * underlying claim was true. These tests exercise the actual code-side resolution path directly
- * (no LLM call — `evaluateHypothesis`/`checkPasses` are pure functions), proving a real evidence
- * id now resolves, and that a genuine mismatch still correctly fails closed (this must NOT become
- * fail-open as a side effect of the fix).
- */
 const CANDIDATE: HypothesisCandidate = {
   description: "The login middleware rejects a valid session and redirects back to /login",
   confidence: 0.9,
@@ -77,9 +68,6 @@ describe("evaluateHypothesis — real evidence-id resolution (T050, FR-010, Cons
       { kind: "semantic", evidenceId: "evidence-1", assertion: "the redirect confirms this", passed: false },
     ];
 
-    // Neither an all-passing nor an all-failing semantic-only check set may decide SUPPORTED or
-    // REJECTED — code has contributed nothing but a trivial AND over the model's own self-report,
-    // which Constitution I doesn't accept as "deterministic code evaluating structured evidence."
     expect(evaluateHypothesis(CANDIDATE, passingSemanticOnly, evidenceById).status).toBe("VALIDATING");
     expect(evaluateHypothesis(CANDIDATE, failingSemanticOnly, evidenceById).status).toBe("VALIDATING");
   });

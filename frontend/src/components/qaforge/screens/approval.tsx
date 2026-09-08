@@ -9,9 +9,6 @@ import { ActionRiskBadge, ConfidenceMeter } from "../domain";
 import { useQAForge, draftIssue } from "../provider";
 import type { Approval } from "@/data/qaforge";
 
-// Ported from the imported design project's app/screens/approval.jsx.
-// WORKFLOW §5: the only screen in the product with an external write. A deliberate confirmation step.
-
 const STATE_COPY: Record<string, { tone: "warning" | "success" | "neutral"; icon: string; label: string }> = {
   PENDING: { tone: "warning", icon: "Clock", label: "PENDING" },
   APPROVED: { tone: "success", icon: "Check", label: "APPROVED" },

@@ -32,7 +32,7 @@ describe("assembleEvidence — console/network/DOM → Evidence (FR-005)", () =>
     expect(evidence).toHaveLength(1);
     expect(evidence[0]).toMatchObject({ stepId: "step-2", type: "NETWORK" });
     expect(evidence[0]?.metadata).toMatchObject({ status: 401 });
-    // Header value redacted, name/presence preserved (FR-006) — assembly must not bypass redaction.
+
     expect((evidence[0]?.metadata.requestHeaders as Record<string, string>).Authorization).toBe(
       "[REDACTED]",
     );

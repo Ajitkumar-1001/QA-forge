@@ -8,22 +8,12 @@ import type { Evidence } from "../types";
 import { type ToolResult } from "../prompt-context";
 import { logEvent } from "../observability";
 
-/**
- * The composite step's pure sequencing logic — `investigateRepo → createHypotheses →
- * validateCause`, with `triedHypotheses`/`searchHistory` threaded forward — is exercised directly
- * by T028's unit test against dependency-injected fakes (research.md §1's testing strategy:
- * "export each workflow step's execute body as a plain function taking its dependencies as
- * parameters"). Below the pure logic, `createInvestigationRoundStep` wires it to the real
- * repository investigator, root-cause agent, and validator agent, and wraps it as a Mastra
- * `createStep()` for `dountil` to loop (research.md §2).
- */
-
 export type Verdict = "SUPPORTED" | "REJECTED" | "VALIDATING";
 
 export interface InvestigationRoundState {
-  /** Every hypothesis evaluated across all rounds so far (Report.hypotheses, SC-006). */
+
   triedHypotheses: unknown[];
-  /** What's already been searched, so a later round narrows rather than repeats (research.md §2). */
+
   searchHistory: string[];
 }
 
@@ -39,11 +29,6 @@ export interface InvestigationRoundDeps {
   validateCause: (hypotheses: unknown[]) => Promise<{ verdict: Verdict; hypotheses: unknown[] }>;
 }
 
-/**
- * One full round: repository investigation (consuming prior search history to avoid repeating a
- * search) → hypothesis generation → validation. Returns the accumulated state for the next round
- * — or for the post-loop `.branch()` — to consume.
- */
 export async function runInvestigationRound(
   deps: InvestigationRoundDeps,
   state: InvestigationRoundState,
@@ -63,10 +48,9 @@ export interface InvestigationRoundContext {
   objective: string;
   repoUrl: string;
   githubToken?: string;
-  /** The step-failure evidence (already redacted), cited by every round's hypothesis/validator
-   * prompts — not just the repository content each round newly discovers. */
+
   evidence: Evidence[];
-  /** NFR-005's informal log (T061, 2026-09-04 /speckit-converge). */
+
   runId: string;
 }
 
@@ -74,23 +58,18 @@ function evidenceToToolResults(evidence: Evidence[]): ToolResult[] {
   return evidence.map((item) => ({
     provenance: item.type === "CODE" ? ("code" as const) : ("browser" as const),
     content: item.content,
-    // T050, 2026-09-04 /speckit-converge: without this, no prompt ever showed the model a real
-    // evidence id, so every structured check's evidenceId was uncitable and evaluateHypothesis
-    // rejected it by construction — see prompt-context.ts's ToolResult.id doc for the full story.
+
     id: item.id,
   }));
 }
 
-/** Wires `InvestigationRoundDeps` to the real repository investigator, root-cause agent, and
- * validator agent (T032, T036, T037). */
 export function createInvestigationRoundDeps(
   context: InvestigationRoundContext,
 ): InvestigationRoundDeps {
   const investigateTool = createInvestigateTool(context.githubToken);
   const evidenceById = new Map(context.evidence.map((item) => [item.id, item]));
   const baseEvidence = evidenceToToolResults(context.evidence);
-  // T061, 2026-09-04 /speckit-converge: closure-local counter — `dountil` doesn't hand this step's
-  // execute an iteration number, and this is the composite step that runs once per round.
+
   let iteration = 0;
 
   return {
@@ -107,8 +86,7 @@ export function createInvestigationRoundDeps(
       const codeEvidence: ToolResult[] = candidateFiles.map((file) => ({
         provenance: "code",
         content: `${file.path}:\n${file.excerpt}`,
-        // Repository files have no Evidence.id (they never pass through evidence.tool.ts) — the
-        // file's own path is the natural, stable identifier a hypothesis's evidenceLinks can cite.
+
         id: file.path,
       }));
       return generateHypotheses(context.objective, [...baseEvidence, ...codeEvidence]);
@@ -143,8 +121,6 @@ export const investigationRoundOutputSchema = investigationRoundStateSchema.exte
   verdict: z.enum(["SUPPORTED", "REJECTED", "VALIDATING"]),
 });
 
-/** The Mastra step `dountil` loops (research.md §2) — ONE step whose `execute` body runs the
- * three-call sequence above, not a nested multi-step sub-workflow. */
 export function createInvestigationRoundStep(context: InvestigationRoundContext) {
   const deps = createInvestigationRoundDeps(context);
   return createStep({

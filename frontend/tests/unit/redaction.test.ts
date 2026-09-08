@@ -29,7 +29,7 @@ describe("redactHeaders — header values masked, names/presence preserved (FR-0
     expect(result.Cookie).toBe("[REDACTED]");
     expect(result["Set-Cookie"]).toBe("[REDACTED]");
     expect(result["X-Request-Id"]).toBe("req-1");
-    // Names and presence are preserved even though values are masked.
+
     expect(Object.keys(result)).toEqual(["Authorization", "Cookie", "Set-Cookie", "X-Request-Id"]);
   });
 

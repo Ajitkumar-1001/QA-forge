@@ -5,12 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
-// UX-002: if navigation hasn't happened within this window (blocked popup, dropped connection,
-// any pre-navigation failure), re-enable rather than stay disabled indefinitely.
 const NAVIGATION_TIMEOUT_MS = 8000;
 
-// lucide-react (installed at v1.40.0) no longer ships brand/logo icons — inlined instead of
-// adding a dependency for one static path.
 function GitHubIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="size-4" fill="currentColor">
@@ -33,7 +29,6 @@ export function SignInButton() {
     setStatus("pending");
     timeoutRef.current = setTimeout(() => setStatus("timed-out"), NAVIGATION_TIMEOUT_MS);
 
-    // UX-004: fixed, hardcoded destination — never a request-supplied redirect target.
     await authClient.signIn.social({ provider: "github", callbackURL: "/dashboard" }).catch(() => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       setStatus("timed-out");
@@ -42,9 +37,7 @@ export function SignInButton() {
 
   return (
     <div className="flex flex-col items-center gap-2">
-      {/* UX-007: explicit 44px, not min-h-11 — this app's root font-size is 14px, so a
-          rem-relative spacing utility (2.75rem) resolves to 38.5px here, not the expected 44px.
-          button.tsx's own "lg" size alone tops out at 36px either way. */}
+
       <Button onClick={handleClick} disabled={status === "pending"} size="lg" className="min-h-[44px]">
         {status === "pending" ? <Spinner /> : <GitHubIcon />}
         Continue with GitHub

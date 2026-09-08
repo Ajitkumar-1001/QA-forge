@@ -7,8 +7,6 @@ import { ActionRiskBadge, PageHeader } from "../domain";
 import { useQAForge } from "../provider";
 import { initialPolicies, type Environment } from "@/data/qaforge";
 
-// Ported from the imported design project's app/screens/new-run.jsx.
-
 const ENV_URL: Record<Environment["id"], string> = {
   LOCAL: "http://localhost:3000",
   PREVIEW: "https://pr-412.preview.qaforge.dev",
@@ -29,8 +27,7 @@ export function NewRunScreen() {
   const changeEnv = (v: string) => { const e = v as Environment["id"]; setEnv(e); setUrl(ENV_URL[e]); };
   const start = () => {
     if (objective.trim().length < 12) { setError("Describe the journey to verify in at least one full sentence."); return; }
-    // ponytail: `url` and `mode` are collected here but the mock backend (provider.startRun)
-    // doesn't consume them yet — add when a real run-execution API exists.
+
     startRun({ repository: repo, environment: env, objective: objective.trim() });
   };
   const policy = initialPolicies[env === "PRODUCTION" ? "PRODUCTION" : "STAGING"];

@@ -9,17 +9,7 @@ import { AlertDialog, DropdownMenu, type AlertDialogProps, type MenuItemDef } fr
 import { LIVE_STATUSES, runStatusSchema, type ConsoleEntry, type Finding, type NetworkRequest, type Run, type RunStatus, type SourceFile, type TraceEvent } from "@/data/qaforge";
 import { cn } from "cn";
 
-// Ported from the imported design project's component bundle (components/{agents,approvals,evidence,
-// findings,runs,shell}/**). These are QAForge-specific compositions built on the primitives in
-// ./primitives, ./forms and ./overlays — internals now render Tailwind utilities against the
-// shadcn/globals.css tokens instead of qf-* classes, same convention as primitives.tsx.
-
-// Shared "micro label" style (11px/500/uppercase/0.04em tracking) used across findings/agents/approvals.
 const LABEL_CLS = "text-[11px] font-medium uppercase tracking-[0.04em] text-text-tertiary";
-
-// ---------------------------------------------------------------------------
-// shell/PageHeader
-// ---------------------------------------------------------------------------
 
 export function PageHeader({ title, description, badge, actions, compact = false, className = "" }: {
   title: React.ReactNode;
@@ -42,10 +32,6 @@ export function PageHeader({ title, description, badge, actions, compact = false
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// findings/ConfidenceMeter
-// ---------------------------------------------------------------------------
 
 export function confidenceBand(v: number) {
   return v < 50 ? "weak" : v < 70 ? "moderate" : v < 85 ? "strong" : "high";
@@ -84,10 +70,6 @@ export function ConfidenceMeter({ value = 0, label = "Confidence", segments = 20
   );
 }
 
-// ---------------------------------------------------------------------------
-// findings/SeverityBadge, runs/RunStatusBadge, approvals/ActionRiskBadge, agents/AgentStatus
-// ---------------------------------------------------------------------------
-
 type Badge_Tone = "neutral" | "active" | "success" | "warning" | "error";
 
 const SEVERITY: Record<string, { tone: Badge_Tone; icon: string; solid?: boolean }> = {
@@ -109,13 +91,12 @@ export const RUN_STATUS: Record<RunStatus, { tone: Badge_Tone; icon?: string; pu
   INVESTIGATING: { tone: "active", pulse: true, label: "Investigating" },
   PASSED: { tone: "success", icon: "Check", label: "Passed" },
   FAILED: { tone: "error", icon: "CircleX", label: "Failed" },
-  // ERROR is a system/infra outcome (§20), added here rather than monkey-patched at runtime.
+
   ERROR: { tone: "error", icon: "TriangleAlert", label: "Error" },
 };
 
 export function RunStatusBadge({ status = "PLANNING", solid = false, size = "md", className = "" }: { status?: RunStatus; solid?: boolean; size?: "sm" | "md"; className?: string }) {
-  // Normalization kept internal — RUN_STATUS is keyed by the canonical RunStatus enum, but the
-  // lookup key still needs a loosely-typed intermediate to survive the uppercase/underscore pass.
+
   const key = String(status).toUpperCase().replace(/\s+/g, "_") as RunStatus;
   const s = RUN_STATUS[key] || RUN_STATUS.PLANNING;
   return <Badge tone={s.tone} solid={solid} size={size} icon={s.icon} dot={!!s.pulse} pulse={!!s.pulse} className={className}>{key.replace("_", " ")}</Badge>;
@@ -150,10 +131,6 @@ export function AgentStatus({ status = "IDLE", solid = false, size = "md", class
   const s = AGENT_STATUS[key] || AGENT_STATUS.IDLE;
   return <Badge tone={s.tone} solid={solid} size={size} icon={s.icon} dot={!!s.pulse} pulse={!!s.pulse} className={className}>{key}</Badge>;
 }
-
-// ---------------------------------------------------------------------------
-// runs/ExecutionStep, runs/ExecutionTimeline
-// ---------------------------------------------------------------------------
 
 const STEP_MARK: Record<string, string> = { passed: "Check", failed: "X", skipped: "Minus", waiting: "Hand" };
 const STEP_MARKER_TONE: Record<string, string> = {
@@ -210,10 +187,6 @@ export function ExecutionTimeline({ steps = [], numbered = true, className = "" 
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// agents/ToolCallItem, agents/AgentTrace, agents/AgentInspector
-// ---------------------------------------------------------------------------
 
 const TOOL_ICON: Record<string, string> = { readFile: "FileCode", searchRepository: "Search", inspectNetwork: "Network", captureScreenshot: "Camera", readConsole: "Terminal", navigate: "Globe", click: "MousePointerClick", fill: "TextCursorInput", assert: "CircleCheck", createIssue: "Github", runQuery: "Database" };
 
@@ -298,11 +271,6 @@ export function AgentInspector({ agent = "Root Cause Agent", status = "ACTIVE", 
     </aside>
   );
 }
-
-// ---------------------------------------------------------------------------
-// evidence/EvidenceReference, evidence/ScreenshotViewer, evidence/SourceViewer,
-// evidence/ConsoleViewer, evidence/EvidenceTabs, evidence/NetworkTable
-// ---------------------------------------------------------------------------
 
 const KIND_ICON: Record<string, string> = { network: "Network", console: "Terminal", source: "FileCode", screenshot: "Image", trace: "Activity", cookie: "Cookie", commit: "GitCommitHorizontal" };
 const STATUS_META_TONE: Record<string, string> = { "2": "text-status-success", "3": "text-status-active", "4": "text-status-warning", "5": "text-status-error" };
@@ -492,10 +460,6 @@ export function NetworkTable({ requests = [], onOpen, selectedId, compact = true
   return <DataTable columns={columns} rows={requests} onRowClick={onOpen} selectedKey={selectedId} compact={compact} pageSize={pageSize} toolbar={toolbar} totalLabel="requests" emptyText="No network activity captured." rowClassName={(r) => (r.status >= 500 ? "bg-status-error-muted" : undefined)} />;
 }
 
-// ---------------------------------------------------------------------------
-// findings/FindingCard, findings/FindingTable, runs/RunTable, runs/RunFilters, runs/RunHeader
-// ---------------------------------------------------------------------------
-
 const LIFECYCLE_TONE: Record<string, Badge_Tone> = { OPEN: "error", ACKNOWLEDGED: "warning", "ISSUE CREATED": "active", "FIX IN PROGRESS": "active", RESOLVED: "success", DISMISSED: "neutral" };
 
 export function FindingCard({ finding, onInspectEvidence, onCreateIssue, onEvidenceClick, compact = false, className = "" }: {
@@ -667,10 +631,6 @@ export function RunHeader({ run, onRerun, menuItems, className = "" }: { run: Ru
   );
 }
 
-// ---------------------------------------------------------------------------
-// approvals/ApprovalDialog
-// ---------------------------------------------------------------------------
-
 export function ApprovalDialog({ open = false, onOpenChange, action = "Create GitHub Issue", repository, title, fields = [], included = [], risk = "REVERSIBLE", confirmLabel = "Approve & Create", onApprove, onCancel, loading = false }: {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -713,5 +673,4 @@ export function ApprovalDialog({ open = false, onOpenChange, action = "Create Gi
   );
 }
 
-// Re-exports used by screens for convenience.
 export { Card, Progress, Separator, Empty, Spinner };
