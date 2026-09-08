@@ -7,7 +7,7 @@ import {
 } from "../mastra/agents/test-planner.agent";
 import { runQaInvestigation } from "../mastra/workflows/qa-investigation.workflow";
 import { logEvent } from "../mastra/observability";
-import type { Report } from "../mastra/types";
+import type { ErrorReason, Report, RunStatus } from "../mastra/types";
 
 type OutputFormat = "text" | "json";
 
@@ -109,6 +109,31 @@ function exitCodeForResult(result: Report["result"]): number {
   }
 }
 
+// data-model.md's state-transition note: Report.result's three-way PASS/FAIL/INCONCLUSIVE
+// distinction collapses to TestRun.status's terminal two-way PASSED/FAILED — INCONCLUSIVE
+// maps to FAILED (the run finished and needs a human's attention), matching PRD §15's own
+// reasoning for why TestRun.status doesn't need a fourth value.
+function runStatusForReportResult(result: Report["result"]): RunStatus {
+  return result === "PASS" ? "PASSED" : "FAILED";
+}
+
+const KNOWN_ERROR_REASONS: ReadonlySet<string> = new Set([
+  "LIMIT_EXCEEDED",
+  "APP_UNREACHABLE",
+  "OBJECTIVE_NOT_PLANNABLE",
+  "REPO_ACCESS_DENIED",
+  "LLM_PROVIDER_ERROR",
+] satisfies ErrorReason[]);
+
+function isKnownErrorReason(reason: string): reason is ErrorReason {
+  return KNOWN_ERROR_REASONS.has(reason);
+}
+
+// Set once a test_run row exists (touch point 1) so the top-level .catch() below (touch
+// point 3) can persist an ERROR status for it — main()'s own locals aren't visible there.
+let currentRun: { callerId: string; dbRunId: string } | undefined;
+let recordRunResultForCallerFn: typeof import("../lib/repositories/test-run").recordRunResultForCaller | undefined;
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
@@ -129,6 +154,46 @@ async function main(): Promise<void> {
     }
   }
 
+  const callerId = process.env.QAFORGE_USER_ID;
+  if (!callerId) {
+    throw Object.assign(new Error("QAFORGE_USER_ID is not set"), { reason: "MISSING_USER_ID" });
+  }
+
+  // Fresh per invocation, matching the CLI's existing runId generation below — reused as
+  // both 001's internal workflow-scoped run id and FR-007's idempotency key. True
+  // retry-safety (the same key across two separate invocations) isn't exercised by the
+  // CLI itself, only by a future caller that persists and replays a key (research.md #4).
+  const runId = crypto.randomUUID();
+
+  // Deferred until every cheap, DB-free check above has passed — importing these earlier
+  // would require DATABASE_URL just to validate args/env vars, breaking
+  // contracts/cli-contract.md's exit-3-before-any-external-resource contract
+  // (tests/integration/cli-contract.test.ts spawns the real CLI and checks exactly this).
+  const { createProjectForCaller } = await import("../lib/repositories/project");
+  const { createScenarioForCaller } = await import("../lib/repositories/test-scenario");
+  const { startRunForCaller, recordRunResultForCaller } = await import("../lib/repositories/test-run");
+  recordRunResultForCallerFn = recordRunResultForCaller;
+
+  const project = await createProjectForCaller(callerId, { applicationUrl: args.url, repository: args.repo });
+  const scenario = await createScenarioForCaller(callerId, {
+    projectId: project.id,
+    objective: args.objective,
+    // No real secrets-manager integration exists yet (D2, out of scope for 001 and this
+    // feature) — this records only that a credential was supplied, never the value itself
+    // (FR-011). Not a resolvable pointer; a future feature building D2 replaces it with one.
+    credentialsReference: credentialValue ? "cli-env:QAFORGE_CREDENTIAL" : null,
+  });
+  if ("ok" in scenario) {
+    throw Object.assign(new Error("Failed to create scenario for the resolved caller"), { reason: "UNKNOWN_ERROR" });
+  }
+
+  const startedRun = await startRunForCaller(callerId, { scenarioId: scenario.id, idempotencyKey: runId });
+  if ("ok" in startedRun) {
+    throw Object.assign(new Error("Failed to start run for the resolved caller"), { reason: "UNKNOWN_ERROR" });
+  }
+  const dbRunId = startedRun.run.id;
+  currentRun = { callerId, dbRunId };
+
   const plan = await generateTestPlan(args.objective);
 
   if (!isPlanWellFormed(plan)) {
@@ -139,7 +204,6 @@ async function main(): Promise<void> {
   }
   checkStepCountLimit(plan.steps.length);
 
-  const runId = crypto.randomUUID();
   const report = await runQaInvestigation({
     objective: args.objective,
     applicationUrl: args.url,
@@ -149,6 +213,16 @@ async function main(): Promise<void> {
     steps: plan.steps,
     maxIterations: args.maxSteps,
     runId,
+  });
+
+  // Durable write, additive alongside the existing console output below (FR-003) — neither
+  // depends on the other having happened first. modelCalls is always [] today: nothing in
+  // 001's agents constructs a ModelCall value yet (research.md #7, a known, separate gap).
+  await recordRunResultForCaller(callerId, dbRunId, {
+    status: runStatusForReportResult(report.result),
+    errorReason: null,
+    modelCalls: [],
+    report,
   });
 
   logEvent({
@@ -176,4 +250,28 @@ main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
   reportError(format, reason, message);
   process.exitCode = 3;
+
+  // Persists OBJECTIVE_NOT_PLANNABLE and every other pre-completion failure as a real
+  // ERROR run instead of only ever appearing as stderr output. Also fires — safely, as a
+  // no-op — when the report-recording call above already succeeded and something
+  // unrelated threw afterward (research.md #5: recordRunResultForCaller no-ops on an
+  // already-terminal run rather than crashing on report.run_id's UNIQUE constraint).
+  if (currentRun && recordRunResultForCallerFn) {
+    // test_run.error_reason's pgEnum only allows 001's 5 real ErrorReason values (FR-012)
+    // — a generic failure with no matching reason (e.g. "UNKNOWN_ERROR") is stored as null
+    // rather than misattributed to one of the 5, since the DB constraint would reject an
+    // unlisted value outright and null is itself a valid, honest "unclassified" state
+    // (data-model.md: non-null only when status = 'ERROR', never required to be non-null).
+    const errorReason = isKnownErrorReason(reason) ? reason : null;
+    recordRunResultForCallerFn(currentRun.callerId, currentRun.dbRunId, {
+      status: "ERROR",
+      errorReason,
+      modelCalls: [],
+      report: null,
+    }).catch((persistError: unknown) => {
+      // Never let a failure to persist the ERROR status mask the original error already
+      // reported above — this is best-effort, not a second chance to change the exit code.
+      console.error("Failed to persist ERROR run status:", persistError);
+    });
+  }
 });
