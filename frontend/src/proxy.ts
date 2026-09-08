@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { auth } from "@/lib/auth";
 
 // NFR-001's sliding-session refresh needs the "secure" DB-backed check (auth.api.getSession()),
 // not an optimistic cookie-presence check — and per Better Auth's own documented pattern, proxy
@@ -23,9 +22,25 @@ import { auth } from "@/lib/auth";
 const PROTECTED_ROUTE_PREFIXES: readonly string[] = [];
 
 export async function proxy(request: NextRequest) {
-  // SEC-006: an infra error resolving the session here must deny (treat as no session) for this
-  // request only — it must NOT crash proxy itself, which runs on every matched route and would
-  // otherwise turn a transient DB outage into a site-wide 500 instead of a graceful denial.
+  // SEC-006 / T042: an infra error resolving the session here must deny (treat as no session)
+  // for this request only — it must NOT crash proxy itself, which runs on every matched route
+  // and would otherwise turn a transient DB outage into a site-wide 500 instead of a graceful
+  // denial. The `.catch(() => null)` below only covers a *runtime* getSession() failure —
+  // @/lib/auth also transitively imports @/db/client, which throws at module-*evaluation* time
+  // if DATABASE_URL is missing/malformed. A static top-level `import { auth } from "@/lib/auth"`
+  // let that throw fail proxy's own module load instead, which crashed every route this matcher
+  // covers (found live via /qa-only, confirmed via /speckit-converge — T042). Deferring the
+  // import into the function body, wrapped in try/catch, confines that failure the same way: no
+  // session, safe pass-through — never a crash. (This is a UX-layer check only, not the
+  // enforcement point — see the pass-through comment below; the Data Access Layer denies for
+  // real regardless of what proxy does here.)
+  let auth: typeof import("@/lib/auth").auth;
+  try {
+    ({ auth } = await import("@/lib/auth"));
+  } catch {
+    return NextResponse.next();
+  }
+
   const result = await auth.api.getSession({ headers: request.headers, returnHeaders: true }).catch(() => null);
 
   const isProtected = PROTECTED_ROUTE_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix));
