@@ -24,14 +24,14 @@ let schema: typeof import("@/db/schema");
 let getGithubConnectionForCaller: typeof import("@/lib/repositories/github-connection").getGithubConnectionForCaller;
 let upsertGithubConnectionForCaller: typeof import("@/lib/repositories/github-connection").upsertGithubConnectionForCaller;
 let deleteGithubConnectionForCaller: typeof import("@/lib/repositories/github-connection").deleteGithubConnectionForCaller;
+let resolveGithubTokenForCaller: typeof import("@/lib/repositories/github-connection").resolveGithubTokenForCaller;
 let getGithubConnectionForCallerSafely: typeof import("@/lib/github-connection-service").getGithubConnectionForCallerSafely;
 
 beforeEach(async () => {
   ({ db } = await import("@/db/client"));
   schema = await import("@/db/schema");
-  ({ getGithubConnectionForCaller, upsertGithubConnectionForCaller, deleteGithubConnectionForCaller } = await import(
-    "@/lib/repositories/github-connection"
-  ));
+  ({ getGithubConnectionForCaller, upsertGithubConnectionForCaller, deleteGithubConnectionForCaller, resolveGithubTokenForCaller } =
+    await import("@/lib/repositories/github-connection"));
   ({ getGithubConnectionForCallerSafely } = await import("@/lib/github-connection-service"));
   getCallerIdMock.mockReset();
 
@@ -151,5 +151,21 @@ describe("deleteGithubConnectionForCaller — 007-github-connection (FR-007/FR-0
   it("a caller can only delete their own connection — another user's survives untouched", async () => {
     await deleteGithubConnectionForCaller("user-b"); // user-b has no connection at all
     expect(await getGithubConnectionForCaller("user-a")).not.toBeNull(); // user-a's untouched
+  });
+});
+
+describe("resolveGithubTokenForCaller — 009-wire-github-connection", () => {
+  it("decrypts and returns the caller's own connected token", async () => {
+    await upsertGithubConnectionForCaller("user-b", { pat: "ghp_real_token_for_resolve_test", scopes: "contents:read,issues:write" });
+    expect(await resolveGithubTokenForCaller("user-b")).toBe("ghp_real_token_for_resolve_test");
+  });
+
+  it("returns undefined for a caller with no connection — not an error", async () => {
+    expect(await resolveGithubTokenForCaller("user-b")).toBeUndefined();
+  });
+
+  it("never resolves another caller's token — ownership-scoped", async () => {
+    await upsertGithubConnectionForCaller("user-a", { pat: "ghp_user_a_only", scopes: "contents:read,issues:write" });
+    expect(await resolveGithubTokenForCaller("user-b")).toBeUndefined();
   });
 });

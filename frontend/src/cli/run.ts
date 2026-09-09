@@ -175,6 +175,7 @@ export async function main(): Promise<void> {
   const { createProjectForCaller } = await import("../lib/repositories/project");
   const { createScenarioForCaller, resolveCredentialForCaller } = await import("../lib/repositories/test-scenario");
   const { hasCapacityForCaller, startRunForCaller, recordRunResultForCaller } = await import("../lib/repositories/test-run");
+  const { resolveGithubTokenForCaller } = await import("../lib/repositories/github-connection");
   recordRunResultForCallerFn = recordRunResultForCaller;
 
   // 006-run-concurrency-cap: checked before createProjectForCaller — a courtesy early-exit
@@ -234,16 +235,37 @@ export async function main(): Promise<void> {
     ? (JSON.parse(resolvedCredential) as { password?: string }).password
     : undefined;
 
-  const report = await runQaInvestigation({
-    objective: args.objective,
-    applicationUrl: args.url,
-    repoUrl: args.repo,
-    githubToken: process.env.GITHUB_TOKEN,
-    credentialValue: credentialValueForInvestigation,
-    steps: plan.steps,
-    maxIterations: args.maxSteps,
-    runId,
-  });
+  // 009-wire-github-connection: each caller's own connected token, not a shared
+  // server-wide env var — undefined when the caller hasn't connected one, which is fine
+  // (public repos clone without auth; REPO_ACCESS_DENIED fires naturally for private
+  // ones, same as it already did for a caller-less/unset env var before).
+  const githubToken = await resolveGithubTokenForCaller(callerId);
+
+  let report: Report;
+  try {
+    report = await runQaInvestigation({
+      objective: args.objective,
+      applicationUrl: args.url,
+      repoUrl: args.repo,
+      githubToken,
+      credentialValue: credentialValueForInvestigation,
+      steps: plan.steps,
+      maxIterations: args.maxSteps,
+      runId,
+    });
+  } catch (error) {
+    // A clearer hint specifically for "you never connected GitHub" — only when that's
+    // actually why the clone had no credentials to try. The message is what the CLI
+    // prints to stderr (reportError, below); the UI path (actions.ts) doesn't render this
+    // string anywhere today, so the same augmentation there would be dead code — not added.
+    if (!githubToken && (error as { reason?: string } | undefined)?.reason === "REPO_ACCESS_DENIED") {
+      throw Object.assign(
+        new Error(`${(error as Error).message} (No GitHub connection found for this user — connect one in Settings if this repository needs one.)`),
+        { reason: "REPO_ACCESS_DENIED" },
+      );
+    }
+    throw error;
+  }
 
   // Durable write, additive alongside the existing console output below (FR-003) — neither
   // depends on the other having happened first. modelCalls is always [] today: nothing in
