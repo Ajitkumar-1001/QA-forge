@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PROTECTED_ROUTE_PREFIXES: readonly string[] = [];
+const PROTECTED_ROUTE_PREFIXES: readonly string[] = ["/runs"];
 
 export async function proxy(request: NextRequest) {
 
