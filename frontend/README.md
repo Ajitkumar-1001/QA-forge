@@ -56,7 +56,15 @@ Every structured agent call is defensively re-validated against its Zod schema (
 ```
 src/
 ├── cli/run.ts                          # `pnpm qaforge` entrypoint
-├── app/                                 # Next.js UI (Dashboard / Test Run View / Evidence Viewer / Agent Trace)
+├── app/                                 # Next.js UI — sign-in, dashboard, runs/[runId], settings,
+│                                        # findings, policies, repositories, environments, test-plans
+├── db/
+│   ├── schema.ts                       # Drizzle: user/session/project/testScenario/testRun/…/report
+│   └── client.ts                       # pg pool, DATABASE_URL-driven
+├── lib/
+│   ├── auth.ts                         # better-auth: GitHub OAuth, hashed session tokens
+│   ├── repositories/                   # callerId-scoped queries (project, test-scenario, test-run, github-connection)
+│   └── crypto.ts                       # AEAD encryption for stored secrets (SEC-002/SEC-008)
 └── mastra/
     ├── agents/                          # test-planner, browser-execution, root-cause, validator
     ├── workflows/
@@ -70,7 +78,8 @@ src/
     └── types.ts                        # Run / Step / Evidence domain types
 tests/
 ├── unit/                                # pure logic, dependency-injected fakes
-└── integration/                         # workflow.test.ts against a real fixture HTTP server
+├── integration/                         # workflow + auth-flow, against a real fixture server / pglite
+└── e2e/                                 # Playwright, incl. a `.live.` suite against a real GitHub OAuth app
 ```
 
 `WORKFLOW.md` is the source of truth for screen sequencing and the exact demo script; this README covers the engine underneath it.
@@ -87,15 +96,21 @@ Every agent's system prompt follows the same discipline, not just prose that "so
 
 ```bash
 pnpm install
+pnpm drizzle-kit migrate   # apply committed migrations to DATABASE_URL — never `drizzle-kit push`
 ```
 
-Required environment variable:
+Environment variables:
 
 | Variable | Required | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | yes | Powers every agent call. |
+| `DATABASE_URL` | yes | Postgres connection string — every table in `db/schema.ts`. |
+| `AUTH_ENCRYPTION_KEY` | yes | AEAD key for at-rest secrets (`GithubConnection.patReference`, SEC-002/SEC-008). |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | yes | GitHub OAuth app credentials for sign-in. |
+| `QAFORGE_USER_ID` | yes, for the CLI | An existing `user.id` row the CLI's run gets persisted under. |
 | `GITHUB_TOKEN` | no | Consumed via `GIT_ASKPASS` by the repository investigator for private repos. |
-| `QAFORGE_CREDENTIAL` | no | JSON string, consumed once by the login step; never logged, never stored on the `Run` object. |
+| `QAFORGE_CREDENTIAL` | no | JSON string, consumed once by the login step; never logged, never stored in plaintext. |
+| `TRUSTED_ORIGINS` | no | Comma-separated origins better-auth trusts beyond the app's own. |
 
 ### Run an investigation
 
@@ -103,10 +118,12 @@ Required environment variable:
 pnpm qaforge --url https://staging.example.com --repo owner/repo --objective "Verify login → dashboard flow" [--format json] [--max-steps 20]
 ```
 
+Persists a `Project`/`TestScenario`/`TestRun` chain under `QAFORGE_USER_ID` (see `cli/run.ts`) in addition to printing the report — retrieve it later via `getRunForCaller`.
+
 ### Run the UI
 
 ```bash
-pnpm dev      # http://localhost:3000
+pnpm dev      # http://localhost:3000 — sign in with GitHub first, everything past the dashboard is per-user
 ```
 
 ## Development
@@ -122,4 +139,4 @@ pnpm build           # production build
 
 ## Status
 
-QAForge is built test-first and incrementally — some files are intentionally partial (marked `PARTIAL FILE` in-source) until their wiring task lands, and the CLI/workflow graph are still being connected end to end. The pipeline, schemas, and safety layers described above are the target architecture, verified as they land by the tests in `tests/`.
+QAForge is built test-first and incrementally — some files are intentionally partial (marked `PARTIAL FILE` in-source) until their wiring task lands. Auth (GitHub OAuth, per-user ownership) and durable persistence (Drizzle/Postgres, replacing the harness's original console-only output) have both landed; the pipeline, schemas, and safety layers described above are the target architecture, verified as they land by the tests in `tests/`.
