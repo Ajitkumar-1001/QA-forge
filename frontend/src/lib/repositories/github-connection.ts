@@ -1,13 +1,26 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { githubConnection, type GithubConnection } from "@/db/schema";
-import { encrypt } from "@/lib/crypto";
+import { encrypt, decrypt } from "@/lib/crypto";
 
 export async function getGithubConnectionForCaller(callerId: string): Promise<GithubConnection | null> {
   const row = await db.query.githubConnection.findFirst({
     where: eq(githubConnection.userId, callerId),
   });
   return row ?? null;
+}
+
+/**
+ * 009-wire-github-connection: resolves the caller's own connected token for real use (an
+ * investigation's repo clone), not a display value — mirrors resolveCredentialForCaller's
+ * (005) exact shape: `undefined` for "no connection", not an error, since the design this
+ * function serves treats "not connected" as "proceed without a token" (works for public
+ * repos, REPO_ACCESS_DENIED still fires naturally for private ones), not a hard failure.
+ * Called once per run, immediately before runQaInvestigation — never cached.
+ */
+export async function resolveGithubTokenForCaller(callerId: string): Promise<string | undefined> {
+  const connection = await getGithubConnectionForCaller(callerId);
+  return connection ? decrypt(connection.patReference) : undefined;
 }
 
 /**
