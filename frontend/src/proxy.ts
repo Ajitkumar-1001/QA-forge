@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PROTECTED_ROUTE_PREFIXES: readonly string[] = ["/runs"];
+// A-first (login-gate plan): the whole app is protected by default now, not just /runs —
+// PUBLIC_ROUTE_PREFIXES is the exemption list, not a growing allowlist of what to guard.
+// config.matcher below already keeps api/auth, static assets, and favicon.ico out of this
+// function entirely, so /sign-in is the only route that needs listing here.
+const PUBLIC_ROUTE_PREFIXES: readonly string[] = ["/sign-in"];
 
 export async function proxy(request: NextRequest) {
 
@@ -14,9 +18,9 @@ export async function proxy(request: NextRequest) {
 
   const result = await auth.api.getSession({ headers: request.headers, returnHeaders: true }).catch(() => null);
 
-  const isProtected = PROTECTED_ROUTE_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix));
+  const isPublic = PUBLIC_ROUTE_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix));
 
-  if (!result?.response && isProtected) {
+  if (!result?.response && !isPublic) {
 
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }

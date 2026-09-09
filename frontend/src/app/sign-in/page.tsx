@@ -1,11 +1,22 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { SignInButton } from "@/components/sign-in-button";
 import { getOAuthErrorCopy } from "@/lib/oauth-error-copy";
+import { getCallerId } from "@/lib/auth";
 
 export default async function Page(props: PageProps<"/sign-in">) {
   const { error } = await props.searchParams;
   const errorCopy = getOAuthErrorCopy(typeof error === "string" ? error : undefined);
+
+  // A-first (login-gate plan): an already-authenticated visitor lands on /dashboard, not
+  // the sign-in form again — unless there's a real error to show (e.g. a stale callback
+  // link), in which case showing it takes priority over the redirect.
+  if (!errorCopy) {
+    const callerId = await getCallerId(await headers());
+    if (callerId) redirect("/dashboard");
+  }
 
   return (
     <div className="flex min-h-svh items-center justify-center p-6">
