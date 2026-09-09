@@ -5,6 +5,9 @@
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16.3-black?logo=next.js">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript">
   <img alt="Mastra" src="https://img.shields.io/badge/agents-Mastra-6f42c1">
+  <img alt="Playwright" src="https://img.shields.io/badge/browser-Playwright-2EAD33?logo=playwright">
+  <img alt="Vitest" src="https://img.shields.io/badge/tests-Vitest-729B1B?logo=vitest">
+  <img alt="pnpm" src="https://img.shields.io/badge/pnpm-11-F69220?logo=pnpm">
 </p>
 
 <p align="center"><b>An agent that doesn't just run your tests — it investigates why they failed.</b></p>
