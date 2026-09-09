@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   testRun,
@@ -265,6 +265,45 @@ export async function recordRunResultForCaller(
 
     return { ok: true, alreadyRecorded: false } as const;
   });
+}
+
+// 004-run-history-view: a minimal DTO, not a raw joined row — only the fields the Runs
+// list actually displays (data-model.md's RunSummary). No environment/branch/commit/
+// findings — those have no real backing (spec.md FR-002).
+export type RunSummary = {
+  id: string;
+  objective: string;
+  repository: string;
+  status: RunStatus;
+  startedAt: Date;
+  completedAt: Date | null;
+};
+
+/**
+ * Ownership scoped directly in the WHERE clause (ownership-convention.md rule 4:
+ * join-chain-to-root-owner) — same join chain getRunForCaller already uses for its own
+ * top-level check, just without a single-run filter. An empty result is simply "this
+ * caller has no runs" — unlike startRunForCaller/getRunForCaller, there's no single
+ * resource whose not-found-vs-not-owned status is in question for a list (contracts/
+ * repository-contract.md).
+ */
+export async function listRunsForCaller(callerId: string): Promise<RunSummary[]> {
+  const rows = await db
+    .select({
+      id: testRun.id,
+      objective: testScenario.objective,
+      repository: project.repository,
+      status: testRun.status,
+      startedAt: testRun.startedAt,
+      completedAt: testRun.completedAt,
+    })
+    .from(testRun)
+    .innerJoin(testScenario, eq(testRun.scenarioId, testScenario.id))
+    .innerJoin(project, eq(testScenario.projectId, project.id))
+    .where(eq(project.userId, callerId))
+    .orderBy(desc(testRun.startedAt));
+
+  return rows;
 }
 
 export type FullRun = TestRun & {
