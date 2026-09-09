@@ -1,7 +1,12 @@
+import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Report } from "@/mastra/types";
 import type { TestPlan } from "@/mastra/schemas/test-plan.schema";
 import { main, handleFatalError } from "@/cli/run";
+
+// Needed by src/lib/crypto.ts (via createScenarioForCaller/resolveCredentialForCaller's
+// credentialValue path, 007-cli-credential-parity) — same convention tests/unit/test-scenario.test.ts uses.
+process.env.AUTH_ENCRYPTION_KEY ??= randomBytes(32).toString("base64");
 
 // This exercises the DB-touching parts of cli/run.ts (T012-T014's success path and the
 // top-level ERROR-catch path) directly, in-process against a mocked pglite DB — the same
@@ -144,6 +149,27 @@ describe("cli/run.ts main() — durable-write success path (T012-T014, untested 
     const full = await getRunForCaller("cli-user", run!.id);
     expect(full!.report!.result).toBe("PASS");
     expect(full!.steps).toHaveLength(1);
+  });
+
+  it("007-cli-credential-parity: a supplied QAFORGE_CREDENTIAL is stored via the real encrypted store and resolved back before the investigation, not the old unresolvable marker string", async () => {
+    process.env.QAFORGE_CREDENTIAL = JSON.stringify({ username: "cli-e2e-user", password: "hunter2-cli-secret" });
+
+    await main();
+
+    expect(process.exitCode).toBe(0);
+
+    const scenario = await db.query.testScenario.findFirst();
+    expect(scenario!.credentialsReference).not.toBeNull();
+    expect(scenario!.credentialsReference).not.toBe("cli-env:QAFORGE_CREDENTIAL"); // the old marker
+
+    const credentialRow = await db.query.credential.findFirst({
+      where: (t, { eq }) => eq(t.id, scenario!.credentialsReference!),
+    });
+    expect(credentialRow).toBeDefined();
+    expect(credentialRow!.encryptedValue).not.toContain("hunter2-cli-secret");
+
+    const { runQaInvestigation } = await import("@/mastra/workflows/qa-investigation.workflow");
+    expect(vi.mocked(runQaInvestigation)).toHaveBeenCalledWith(expect.objectContaining({ credentialValue: "hunter2-cli-secret" }));
   });
 
   it("persists a FAILED run with its hypotheses when the investigation fails", async () => {

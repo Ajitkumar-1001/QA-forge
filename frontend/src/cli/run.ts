@@ -173,7 +173,7 @@ export async function main(): Promise<void> {
   // contracts/cli-contract.md's exit-3-before-any-external-resource contract
   // (tests/integration/cli-contract.test.ts spawns the real CLI and checks exactly this).
   const { createProjectForCaller } = await import("../lib/repositories/project");
-  const { createScenarioForCaller } = await import("../lib/repositories/test-scenario");
+  const { createScenarioForCaller, resolveCredentialForCaller } = await import("../lib/repositories/test-scenario");
   const { hasCapacityForCaller, startRunForCaller, recordRunResultForCaller } = await import("../lib/repositories/test-run");
   recordRunResultForCallerFn = recordRunResultForCaller;
 
@@ -189,10 +189,16 @@ export async function main(): Promise<void> {
   const scenario = await createScenarioForCaller(callerId, {
     projectId: project.id,
     objective: args.objective,
-    // No real secrets-manager integration exists yet (D2, out of scope for 001 and this
-    // feature) — this records only that a credential was supplied, never the value itself
-    // (FR-011). Not a resolvable pointer; a future feature building D2 replaces it with one.
-    credentialsReference: credentialValue ? "cli-env:QAFORGE_CREDENTIAL" : null,
+    credentialsReference: null,
+    // 007-cli-credential-parity: stores the same raw QAFORGE_CREDENTIAL JSON the UI's
+    // combined credentialUsername/credentialPassword produces (005's {username,password}
+    // shape) — createScenarioForCaller encrypts it and points credentials_reference at a
+    // real, resolvable row, replacing the old "cli-env:QAFORGE_CREDENTIAL" marker string
+    // that nothing could ever resolve back. Guarded by `credentialValue` (the extracted
+    // .password field), not merely credentialJson's presence, to preserve the exact
+    // pre-existing edge case: a QAFORGE_CREDENTIAL value with no "password" field records
+    // no credential at all, same as before this change.
+    credentialValue: credentialValue ? credentialJson! : undefined,
   });
   if ("ok" in scenario) {
     throw Object.assign(new Error("Failed to create scenario for the resolved caller"), { reason: "UNKNOWN_ERROR" });
@@ -218,12 +224,22 @@ export async function main(): Promise<void> {
   }
   checkStepCountLimit(plan.steps.length);
 
+  // 007-cli-credential-parity: resolved once, immediately before the one call that needs
+  // it — mirrors actions.ts's (005) identical resolve-at-use pattern exactly. This CLI path
+  // used to trust its own locally-parsed env var (the `credentialValue` above) directly;
+  // it now round-trips through the same encrypted store the UI already does, so both
+  // entry points prove the identical resolve path, not two independently-trusted ones.
+  const resolvedCredential = await resolveCredentialForCaller(callerId, scenario.id);
+  const credentialValueForInvestigation = resolvedCredential
+    ? (JSON.parse(resolvedCredential) as { password?: string }).password
+    : undefined;
+
   const report = await runQaInvestigation({
     objective: args.objective,
     applicationUrl: args.url,
     repoUrl: args.repo,
     githubToken: process.env.GITHUB_TOKEN,
-    credentialValue,
+    credentialValue: credentialValueForInvestigation,
     steps: plan.steps,
     maxIterations: args.maxSteps,
     runId,

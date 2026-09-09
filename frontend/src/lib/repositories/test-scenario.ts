@@ -24,8 +24,10 @@ function rowToTestScenario(row: Record<string, unknown>): TestScenario {
  * value AES-256-GCM-encrypted via src/lib/crypto.ts) are created in one transaction,
  * and `credentials_reference` is set to the new credential row's id. This is
  * additive, not a replacement: `credentialsReference` keeps its exact prior meaning
- * (an opaque string or null, e.g. cli/run.ts's own `"cli-env:QAFORGE_CREDENTIAL"`
- * marker) when `credentialValue` is absent — cli/run.ts's call site is unchanged.
+ * (an opaque string or null) when `credentialValue` is absent. 007-cli-credential-parity:
+ * cli/run.ts now also passes `credentialValue` when a credential is supplied — its own
+ * former `"cli-env:QAFORGE_CREDENTIAL"` marker-string convention is retired, not just
+ * unused; both callers go through this same path today.
  */
 export async function createScenarioForCaller(
   callerId: string,
