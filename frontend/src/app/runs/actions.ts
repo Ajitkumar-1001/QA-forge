@@ -6,6 +6,7 @@ import { getCallerId } from "@/lib/auth";
 import { createProjectForCaller } from "@/lib/repositories/project";
 import { createScenarioForCaller, resolveCredentialForCaller } from "@/lib/repositories/test-scenario";
 import { hasCapacityForCaller, startRunForCaller, recordRunResultForCaller } from "@/lib/repositories/test-run";
+import { resolveGithubTokenForCaller } from "@/lib/repositories/github-connection";
 import { generateTestPlan, isPlanWellFormed, checkStepCountLimit } from "@/mastra/agents/test-planner.agent";
 import { runQaInvestigation } from "@/mastra/workflows/qa-investigation.workflow";
 import { ERROR_REASON_VALUES } from "@/db/enums";
@@ -135,11 +136,17 @@ export async function startRunAction(_prevState: StartRunState, formData: FormDa
         ? (JSON.parse(resolvedCredential) as { password?: string }).password
         : undefined;
 
+      // 009-wire-github-connection: each caller's own connected token, not a shared
+      // server-wide env var — undefined when the caller hasn't connected one, which is
+      // fine (public repos clone without auth; REPO_ACCESS_DENIED fires naturally for
+      // private ones, same as it already did for a caller-less/unset env var before).
+      const githubToken = await resolveGithubTokenForCaller(callerId);
+
       report = await runQaInvestigation({
         objective,
         applicationUrl,
         repoUrl: repository,
-        githubToken: process.env.GITHUB_TOKEN,
+        githubToken,
         credentialValue: credentialValueForInvestigation,
         steps: plan.steps,
         runId,

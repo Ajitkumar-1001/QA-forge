@@ -172,6 +172,45 @@ describe("cli/run.ts main() — durable-write success path (T012-T014, untested 
     expect(vi.mocked(runQaInvestigation)).toHaveBeenCalledWith(expect.objectContaining({ credentialValue: "hunter2-cli-secret" }));
   });
 
+  it("009-wire-github-connection: runQaInvestigation receives the caller's own connected GitHub token, not process.env.GITHUB_TOKEN", async () => {
+    delete process.env.GITHUB_TOKEN; // proves the resolved connection is what's used, not a leftover env var
+    const { upsertGithubConnectionForCaller } = await import("@/lib/repositories/github-connection");
+    await upsertGithubConnectionForCaller("cli-user", { pat: "ghp_cli_test_token", scopes: "contents:read,issues:write" });
+
+    await main();
+
+    expect(process.exitCode).toBe(0);
+    const { runQaInvestigation } = await import("@/mastra/workflows/qa-investigation.workflow");
+    expect(vi.mocked(runQaInvestigation)).toHaveBeenCalledWith(expect.objectContaining({ githubToken: "ghp_cli_test_token" }));
+  });
+
+  it("009-wire-github-connection: a caller with no GitHub connection gets undefined, not a crash — the investigation still proceeds", async () => {
+    delete process.env.GITHUB_TOKEN;
+
+    await main();
+
+    expect(process.exitCode).toBe(0);
+    const { runQaInvestigation } = await import("@/mastra/workflows/qa-investigation.workflow");
+    expect(vi.mocked(runQaInvestigation)).toHaveBeenCalledWith(expect.objectContaining({ githubToken: undefined }));
+  });
+
+  it("009-wire-github-connection: REPO_ACCESS_DENIED with no GitHub connection gets a clearer hint appended to the message", async () => {
+    delete process.env.GITHUB_TOKEN;
+    const { runQaInvestigation } = await import("@/mastra/workflows/qa-investigation.workflow");
+    vi.mocked(runQaInvestigation).mockRejectedValue(
+      Object.assign(new Error("REPO_ACCESS_DENIED: could not clone https://github.com/owner/repo"), { reason: "REPO_ACCESS_DENIED" }),
+    );
+
+    await main().catch(handleFatalError);
+
+    expect(process.exitCode).toBe(3);
+    const run = await db.query.testRun.findFirst();
+    expect(run?.status).toBe("ERROR");
+    expect(run?.errorReason).toBe("REPO_ACCESS_DENIED");
+    const logged = vi.mocked(console.log).mock.calls.map((call) => call[0]).join("\n");
+    expect(logged).toContain("connect one in Settings");
+  });
+
   it("persists a FAILED run with its hypotheses when the investigation fails", async () => {
     const { runQaInvestigation } = await import("@/mastra/workflows/qa-investigation.workflow");
     vi.mocked(runQaInvestigation).mockResolvedValue({
