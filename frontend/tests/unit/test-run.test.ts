@@ -18,13 +18,16 @@ let schema: typeof import("@/db/schema");
 let startRunForCaller: typeof import("@/lib/repositories/test-run").startRunForCaller;
 let recordRunResultForCaller: typeof import("@/lib/repositories/test-run").recordRunResultForCaller;
 let getRunForCaller: typeof import("@/lib/repositories/test-run").getRunForCaller;
+let listRunsForCaller: typeof import("@/lib/repositories/test-run").listRunsForCaller;
 
 let scenarioId: string;
 
 beforeEach(async () => {
   ({ db } = await import("@/db/client"));
   schema = await import("@/db/schema");
-  ({ startRunForCaller, recordRunResultForCaller, getRunForCaller } = await import("@/lib/repositories/test-run"));
+  ({ startRunForCaller, recordRunResultForCaller, getRunForCaller, listRunsForCaller } = await import(
+    "@/lib/repositories/test-run"
+  ));
 
   await db.delete(schema.testRun);
   await db.delete(schema.testScenario);
@@ -301,5 +304,47 @@ describe("startRunForCaller — FR-007/FR-008 idempotency under concurrency (SC-
     expect(first.created).toBe(true);
     expect(second.created).toBe(true);
     expect(first.run.id).not.toBe(second.run.id);
+  });
+});
+
+describe("listRunsForCaller — FR-001/FR-011 ownership-fixture (SEC-009)", () => {
+  it("a caller with no projects/runs gets an empty list, not an error", async () => {
+    expect(await listRunsForCaller("user-b")).toEqual([]);
+  });
+
+  it("returns only the caller's own runs, never another caller's", async () => {
+    const startedA = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "a-key" })) as {
+      run: TestRun;
+    };
+
+    const [projectB] = await db
+      .insert(schema.project)
+      .values({ id: "project-b", userId: "user-b", applicationUrl: "https://b.example.com", repository: "b/repo" })
+      .returning();
+    const [scenarioB] = await db
+      .insert(schema.testScenario)
+      .values({ id: "scenario-b-list", projectId: projectB!.id, objective: "b's objective" })
+      .returning();
+    const startedB = (await startRunForCaller("user-b", {
+      scenarioId: scenarioB!.id,
+      idempotencyKey: "b-key",
+    })) as { run: TestRun };
+
+    const runsForA = await listRunsForCaller("user-a");
+    expect(runsForA.map((r) => r.id)).toEqual([startedA.run.id]);
+    expect(runsForA[0]).toMatchObject({ objective: "log in", repository: "owner/repo", status: "PLANNING" });
+
+    const runsForB = await listRunsForCaller("user-b");
+    expect(runsForB.map((r) => r.id)).toEqual([startedB.run.id]);
+  });
+
+  it("orders newest-first by startedAt", async () => {
+    const first = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "key-1" })) as { run: TestRun };
+    // Ensure a distinct, later startedAt than the first run.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "key-2" })) as { run: TestRun };
+
+    const runs = await listRunsForCaller("user-a");
+    expect(runs.map((r) => r.id)).toEqual([second.run.id, first.run.id]);
   });
 });
