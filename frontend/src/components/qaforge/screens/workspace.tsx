@@ -8,6 +8,7 @@ import { AlertDialog, Dialog, DropdownMenu, Tabs, type MenuItemDef } from "../ov
 import { ActionRiskBadge, AgentStatus, AgentTrace, Card, PageHeader } from "../domain";
 import { useQAForge } from "../provider";
 import { agents, environments, plans, repositories as initialRepositories, trace, type Environment, type Plan, type Repository } from "@/data/qaforge";
+import { GithubConnectionRow, type GithubConnectionData } from "../settings/github-connection-row";
 
 export function TestPlansScreen() {
   const { go, toast } = useQAForge();
@@ -168,7 +169,7 @@ export function AgentActivityScreen() {
   );
 }
 
-export function SettingsScreen() {
+export function SettingsScreen({ githubConnection }: { githubConnection: GithubConnectionData }) {
   const { toast } = useQAForge();
   const [tab, setTab] = React.useState("workspace");
   return (
@@ -194,7 +195,8 @@ export function SettingsScreen() {
         </Card>
       ) : (
         <Card padding="large">
-          <Field orientation="horizontal" label={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Icon name="Github" size={16} />GitHub App</span>} description="qa-forge · 3 repositories"><Badge tone="success" icon="Check">Connected</Badge></Field>
+          <Field label={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Icon name="Github" size={16} />GitHub</span>}><GithubConnectionRow data={githubConnection} /></Field>
+          <Separator />
           <Field orientation="horizontal" label="Slack" description="#qa-alerts"><Badge tone="success" icon="Check">Connected</Badge></Field>
           <Field orientation="horizontal" label="Linear" description="Create issues in Linear instead of GitHub"><Button variant="outline" size="sm">Connect</Button></Field>
         </Card>
