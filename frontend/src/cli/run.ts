@@ -121,6 +121,11 @@ function runStatusForReportResult(result: Report["result"]): RunStatus {
 // Sourced directly from db/enums.ts — not a hand-typed copy, so a future ErrorReason
 // value added there is automatically known here too (a `satisfies` copy would silently
 // stay stale on addition; only removal would fail typecheck).
+// 006-run-concurrency-cap: shared by the early courtesy check and startRunForCaller's real,
+// atomic backstop (below) — both paths must say the identical thing (also actions.ts's own
+// copy for the web UI, tasks.md T004).
+const RATE_LIMITED_MESSAGE = "You have 5 runs in progress already. Wait for one to finish before starting another.";
+
 const KNOWN_ERROR_REASONS: ReadonlySet<string> = new Set<string>(ERROR_REASON_VALUES);
 
 function isKnownErrorReason(reason: string): reason is ErrorReason {
@@ -169,8 +174,16 @@ export async function main(): Promise<void> {
   // (tests/integration/cli-contract.test.ts spawns the real CLI and checks exactly this).
   const { createProjectForCaller } = await import("../lib/repositories/project");
   const { createScenarioForCaller } = await import("../lib/repositories/test-scenario");
-  const { startRunForCaller, recordRunResultForCaller } = await import("../lib/repositories/test-run");
+  const { hasCapacityForCaller, startRunForCaller, recordRunResultForCaller } = await import("../lib/repositories/test-run");
   recordRunResultForCallerFn = recordRunResultForCaller;
+
+  // 006-run-concurrency-cap: checked before createProjectForCaller — a courtesy early-exit
+  // (FR-001), not the enforcement boundary itself (see hasCapacityForCaller's own doc
+  // comment and startRunForCaller's backstop below, which is what actually guarantees the
+  // cap under real concurrent requests).
+  if (!(await hasCapacityForCaller(callerId))) {
+    throw Object.assign(new Error(RATE_LIMITED_MESSAGE), { reason: "RATE_LIMITED" });
+  }
 
   const project = await createProjectForCaller(callerId, { applicationUrl: args.url, repository: args.repo });
   const scenario = await createScenarioForCaller(callerId, {
@@ -187,6 +200,9 @@ export async function main(): Promise<void> {
 
   const startedRun = await startRunForCaller(callerId, { scenarioId: scenario.id, idempotencyKey: runId });
   if ("ok" in startedRun) {
+    if (startedRun.reason === "RATE_LIMITED") {
+      throw Object.assign(new Error(RATE_LIMITED_MESSAGE), { reason: "RATE_LIMITED" });
+    }
     throw Object.assign(new Error("Failed to start run for the resolved caller"), { reason: "UNKNOWN_ERROR" });
   }
   const dbRunId = startedRun.run.id;
