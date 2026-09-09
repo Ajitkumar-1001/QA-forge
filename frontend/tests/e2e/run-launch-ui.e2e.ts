@@ -40,6 +40,94 @@ async function submitRunForm(
   return match[1]!;
 }
 
+// 006-run-concurrency-cap quickstart Scenario 1: seeds 5 non-terminal test_run rows owned
+// by userId directly (not through the form) so the 6th submission below is the one thing
+// actually under test.
+async function seedFiveNonTerminalRuns(userId: string): Promise<{ scenarioId: string }> {
+  const [seededProject] = await db
+    .insert(project)
+    .values({
+      id: crypto.randomUUID(),
+      userId,
+      applicationUrl: "https://example.com",
+      repository: "qa-forge/cap-seed",
+    })
+    .returning();
+  const [seededScenario] = await db
+    .insert(testScenario)
+    .values({ id: crypto.randomUUID(), projectId: seededProject!.id, objective: "seeded for the concurrency cap", credentialsReference: null })
+    .returning();
+  await db.insert(testRun).values(
+    Array.from({ length: 5 }, (_, i) => ({
+      id: crypto.randomUUID(),
+      scenarioId: seededScenario!.id,
+      idempotencyKey: `cap-seed-${i}-${crypto.randomUUID()}`,
+      status: "RUNNING" as const,
+      startedAt: new Date(),
+    })),
+  );
+  return { scenarioId: seededScenario!.id };
+}
+
+test.describe("006-run-concurrency-cap — a user at the cap is rejected outright (quickstart Scenario 1)", () => {
+  test("a user with 5 non-terminal runs sees the limit-specific message and no new row is created", async ({ browser }) => {
+    const context = await browser.newContext();
+    const { userId } = await signInAs(context, BASE_URL, {
+      user: { name: "Cap User", email: "e2e-cap@example.com", image: "https://example.com/cap.png", emailVerified: true },
+      data: { id: "gh-e2e-cap", login: "e2e-cap" },
+    });
+    await seedFiveNonTerminalRuns(userId);
+
+    // Scoped to this user specifically (via the project.userId join for testRun) — not a
+    // whole-table count, which a real Postgres shared by Playwright's parallel workers would
+    // make flaky (other tests create their own rows concurrently). This also has to prove
+    // FR-001's Project/TestScenario claim, not just TestRun — a bug here previously (caught
+    // by an unscoped, whole-table version of this same assertion) let startRunAction create
+    // a new Project+TestScenario unconditionally before ever reaching the real cap check.
+    const countsForUser = () =>
+      Promise.all([
+        db.query.project.findMany({ where: (t, { eq }) => eq(t.userId, userId) }),
+        db.query.testScenario.findMany({
+          where: (t, { inArray }) =>
+            inArray(
+              t.projectId,
+              db.select({ id: project.id }).from(project).where(eq(project.userId, userId)),
+            ),
+        }),
+        db.query.testRun.findMany({
+          where: (t, { inArray }) =>
+            inArray(
+              t.scenarioId,
+              db
+                .select({ id: testScenario.id })
+                .from(testScenario)
+                .innerJoin(project, eq(testScenario.projectId, project.id))
+                .where(eq(project.userId, userId)),
+            ),
+        }),
+      ]);
+
+    const [projectsBefore, scenariosBefore, runsBefore] = await countsForUser();
+
+    const page = await context.newPage();
+    await page.goto("/runs/new");
+    await page.locator("#url").fill("https://example.com");
+    await page.locator("#repository").fill("qa-forge/cap-test");
+    await page.locator("#objective").fill("this submission should be rejected for the concurrency cap");
+    await page.getByRole("button", { name: /start qa run/i }).click();
+
+    await expect(page.getByText(/5 runs in progress already/i)).toBeVisible();
+    await expect(page).toHaveURL(/\/runs\/new$/);
+
+    const [projectsAfter, scenariosAfter, runsAfter] = await countsForUser();
+    expect(projectsAfter.length).toBe(projectsBefore.length);
+    expect(scenariosAfter.length).toBe(scenariosBefore.length);
+    expect(runsAfter.length).toBe(runsBefore.length);
+
+    await context.close();
+  });
+});
+
 test.describe("US1/US3 — launching a run from the UI (quickstart Scenario 1, 4)", () => {
   test("signed out, submitting the form creates zero rows and redirects to sign-in", async ({ browser }) => {
     const context = await browser.newContext();
