@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { getCallerId } from "@/lib/auth";
 import { createProjectForCaller } from "@/lib/repositories/project";
 import { createScenarioForCaller, resolveCredentialForCaller } from "@/lib/repositories/test-scenario";
-import { startRunForCaller, recordRunResultForCaller } from "@/lib/repositories/test-run";
+import { hasCapacityForCaller, startRunForCaller, recordRunResultForCaller } from "@/lib/repositories/test-run";
 import { generateTestPlan, isPlanWellFormed, checkStepCountLimit } from "@/mastra/agents/test-planner.agent";
 import { runQaInvestigation } from "@/mastra/workflows/qa-investigation.workflow";
 import { ERROR_REASON_VALUES } from "@/db/enums";
@@ -24,6 +24,10 @@ function runStatusForReportResult(result: "PASS" | "FAIL" | "INCONCLUSIVE"): Run
 export interface StartRunState {
   error: string | null;
 }
+
+// 006-run-concurrency-cap: shared by the early courtesy check and startRunForCaller's real,
+// atomic backstop (below) — both paths must say the identical thing.
+const RATE_LIMITED_MESSAGE = "You have 5 runs in progress already. Wait for one to finish before starting another.";
 
 /**
  * 005-run-launch-ui: the UI-triggered equivalent of frontend/src/cli/run.ts's main() — same
@@ -48,6 +52,14 @@ export async function startRunAction(_prevState: StartRunState, formData: FormDa
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return { error: "QAForge is not configured to run investigations yet. Try again later." };
+  }
+
+  // 006-run-concurrency-cap: checked before createProjectForCaller — a courtesy early-exit
+  // (FR-001), not the enforcement boundary itself (see hasCapacityForCaller's own doc
+  // comment and startRunForCaller's backstop below, which is what actually guarantees the
+  // cap under real concurrent requests).
+  if (!(await hasCapacityForCaller(callerId))) {
+    return { error: RATE_LIMITED_MESSAGE };
   }
 
   const applicationUrl = String(formData.get("url") ?? "").trim();
@@ -80,6 +92,11 @@ export async function startRunAction(_prevState: StartRunState, formData: FormDa
 
   const startedRun = await startRunForCaller(callerId, { scenarioId: scenario.id, idempotencyKey: runId });
   if ("ok" in startedRun) {
+    // 006-run-concurrency-cap: a specific message for the cap, ahead of the generic
+    // fallback that now only covers the remaining not_found_or_not_owned case.
+    if (startedRun.reason === "RATE_LIMITED") {
+      return { error: RATE_LIMITED_MESSAGE };
+    }
     return { error: "Could not start the run. Please try again." };
   }
   const dbRunId = startedRun.run.id;
