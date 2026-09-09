@@ -6,7 +6,7 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3210";
 // A-first (login-gate plan): the whole app is gated now, not just /runs — proxy.ts's
 // PUBLIC_ROUTE_PREFIXES is an exemption list (just /sign-in), everything else redirects a
 // signed-out visitor. Every one of these routes was reachable signed-out before this change.
-const PREVIOUSLY_UNGATED_ROUTES = ["/dashboard", "/findings", "/policies", "/settings", "/environments", "/test-plans", "/agent-activity", "/repositories"];
+const PREVIOUSLY_UNGATED_ROUTES = ["/", "/dashboard", "/findings", "/policies", "/settings", "/environments", "/test-plans", "/agent-activity", "/repositories"];
 
 test.describe("A-first — the whole app is gated, not just /runs", () => {
   for (const route of PREVIOUSLY_UNGATED_ROUTES) {

@@ -18,7 +18,10 @@ export async function proxy(request: NextRequest) {
 
   const result = await auth.api.getSession({ headers: request.headers, returnHeaders: true }).catch(() => null);
 
-  const isPublic = PUBLIC_ROUTE_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix));
+  // Segment-anchored, not a bare startsWith — adversarial review found a hypothetical
+  // future "/sign-in-foo" route would otherwise silently become public too.
+  const { pathname } = request.nextUrl;
+  const isPublic = PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
   if (!result?.response && !isPublic) {
 
