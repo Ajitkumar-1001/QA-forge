@@ -29,6 +29,13 @@
       "when": 1788919245743,
       "tag": "0003_brave_ironclad",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788972470609,
+      "tag": "0004_skinny_ricochet",
+      "breakpoints": true
     }
   ]
 }

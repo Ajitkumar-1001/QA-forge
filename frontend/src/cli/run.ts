@@ -176,6 +176,7 @@ export async function main(): Promise<void> {
   const { createScenarioForCaller, resolveCredentialForCaller } = await import("../lib/repositories/test-scenario");
   const { hasCapacityForCaller, startRunForCaller, recordRunResultForCaller } = await import("../lib/repositories/test-run");
   const { resolveGithubTokenForCaller } = await import("../lib/repositories/github-connection");
+  const { createApprovalDraftForCaller } = await import("../lib/repositories/approval");
   recordRunResultForCallerFn = recordRunResultForCaller;
 
   // 006-run-concurrency-cap: checked before createProjectForCaller — a courtesy early-exit
@@ -282,6 +283,11 @@ export async function main(): Promise<void> {
     // the durable write had succeeded.
     console.error(`Failed to record run result: ${recorded.reason}`);
   }
+
+  // D9/GitHub-Write-Path: drafts the one-write approval right after the report that needs
+  // it is persisted — a no-op for PASS (createApprovalDraftForCaller's own guard), mirrors
+  // runs/actions.ts's identical call for the web UI path.
+  await createApprovalDraftForCaller(callerId, dbRunId, { objective: args.objective, repository: args.repo, applicationUrl: args.url }, report);
 
   logEvent({
     type: "terminal",

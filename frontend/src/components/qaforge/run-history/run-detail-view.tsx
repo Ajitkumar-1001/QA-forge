@@ -1,4 +1,5 @@
-import { Badge, Card } from "../primitives";
+import Link from "next/link";
+import { Badge, Button, Card } from "../primitives";
 import { RunStatusBadge } from "../domain";
 import type { FullRun } from "@/lib/repositories/test-run";
 
@@ -13,8 +14,10 @@ import type { FullRun } from "@/lib/repositories/test-run";
 // which is what Constitution Principle II actually requires anyway.
 //
 // Deliberately absent, per FR-006/007/008: no screenshot image, no live/in-progress
-// indicator, no agent-trace timeline, no "rerun"/"create issue"/"approve" control — none of
-// that data exists yet, and none of it is fabricated here.
+// indicator, no agent-trace timeline, no "rerun" control — none of that data exists yet,
+// and none of it is fabricated here. D9/GitHub-Write-Path added the one exception: a link
+// to the real Approval draft, shown only for a FAIL/INCONCLUSIVE report (a PASS report
+// never gets an Approval row — approval.ts's own createApprovalDraftForCaller no-ops).
 
 const RESULT_TONE = { PASS: "success", FAIL: "error", INCONCLUSIVE: "warning" } as const;
 
@@ -108,6 +111,13 @@ export function RunDetailView({ run }: { run: FullRun }) {
                 const winner = run.hypotheses.find((h) => h.id === run.report!.winningHypothesisId);
                 return winner ? <span className="text-sm text-foreground">Root cause: {winner.description}</span> : null;
               })()}
+            {run.report.result !== "PASS" && (
+              <Link href={`/runs/${run.id}/approval`} className="self-start">
+                <Button variant="outline" size="sm" icon="Github">
+                  Review approval draft
+                </Button>
+              </Link>
+            )}
           </div>
         </Card>
       )}

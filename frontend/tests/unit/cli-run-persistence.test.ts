@@ -211,6 +211,33 @@ describe("cli/run.ts main() — durable-write success path (T012-T014, untested 
     expect(logged).toContain("connect one in Settings");
   });
 
+  it("D9/GitHub-Write-Path: a FAILED run gets a drafted Approval row right after the report is recorded", async () => {
+    const { runQaInvestigation } = await import("@/mastra/workflows/qa-investigation.workflow");
+    vi.mocked(runQaInvestigation).mockResolvedValue({
+      result: "FAIL",
+      steps: [],
+      evidence: [],
+      hypotheses: [{ id: "hyp-1", status: "SUPPORTED", description: "root cause", confidence: 0.8, evidenceLinks: [], checks: [] }],
+      winningHypothesisId: "hyp-1",
+      confidence: 0.8,
+    });
+
+    await main();
+
+    expect(process.exitCode).toBe(1);
+    const run = await db.query.testRun.findFirst();
+    const approvalRow = await db.query.approval.findFirst({ where: (t, { eq }) => eq(t.runId, run!.id) });
+    expect(approvalRow?.status).toBe("PENDING");
+    expect(approvalRow?.draftTitle).toContain("root cause");
+  });
+
+  it("D9/GitHub-Write-Path: a PASSED run gets no Approval row at all", async () => {
+    await main();
+
+    expect(process.exitCode).toBe(0);
+    expect(await db.query.approval.findFirst()).toBeUndefined();
+  });
+
   it("persists a FAILED run with its hypotheses when the investigation fails", async () => {
     const { runQaInvestigation } = await import("@/mastra/workflows/qa-investigation.workflow");
     vi.mocked(runQaInvestigation).mockResolvedValue({

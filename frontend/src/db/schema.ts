@@ -20,6 +20,7 @@ import {
   HYPOTHESIS_STATUS_VALUES,
   HYPOTHESIS_EVIDENCE_ROLE_VALUES,
   REPORT_RESULT_VALUES,
+  APPROVAL_STATUS_VALUES,
 } from "./enums";
 
 export const user = pgTable("user", {
@@ -339,6 +340,41 @@ export const reportHypothesis = pgTable(
   (table) => [primaryKey({ columns: [table.reportId, table.hypothesisId] })],
 );
 
+// --- D9/GitHub-Write-Path (PRD §15) ---
+// 1:1 with test_run (unique runId), same shape as report <-> test_run (003) — an Approval's
+// lifecycle is entirely owned by the run whose FAIL/INCONCLUSIVE report produced it. Never
+// created for a PASS report (approval.ts's createApprovalDraftForCaller enforces this).
+export const approvalStatusEnum = pgEnum("approval_status", APPROVAL_STATUS_VALUES);
+
+export const approval = pgTable(
+  "approval",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .unique()
+      .references(() => testRun.id, { onDelete: "cascade" }),
+
+    status: approvalStatusEnum("status").default("PENDING").notNull(),
+    draftTitle: text("draft_title").notNull(),
+    draftBody: text("draft_body").notNull(),
+    githubIssueUrl: text("github_issue_url"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    decidedAt: timestamp("decided_at"),
+    // set null (not cascade) on user deletion: an already-decided Approval's history
+    // shouldn't vanish along with the deciding user's account — matches report's own
+    // winningHypothesisId "set null" precedent for a similar informational-only pointer.
+    decidedBy: text("decided_by").references(() => user.id, { onDelete: "set null" }),
+  },
+);
+
+export const approvalRelations = relations(approval, ({ one }) => ({
+  testRun: one(testRun, { fields: [approval.runId], references: [testRun.id] }),
+  decidedByUser: one(user, { fields: [approval.decidedBy], references: [user.id] }),
+}));
+
+export type Approval = typeof approval.$inferSelect;
+
 export const projectRelations = relations(project, ({ one, many }) => ({
   user: one(user, { fields: [project.userId], references: [user.id] }),
   testScenarios: many(testScenario),
@@ -356,6 +392,7 @@ export const testRunRelations = relations(testRun, ({ one, many }) => ({
   evidence: many(evidence),
   hypotheses: many(hypothesis),
   report: one(report),
+  approval: one(approval),
 }));
 
 export const testStepRelations = relations(testStep, ({ one, many }) => ({

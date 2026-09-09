@@ -7,6 +7,7 @@ import { createProjectForCaller } from "@/lib/repositories/project";
 import { createScenarioForCaller, resolveCredentialForCaller } from "@/lib/repositories/test-scenario";
 import { hasCapacityForCaller, startRunForCaller, recordRunResultForCaller } from "@/lib/repositories/test-run";
 import { resolveGithubTokenForCaller } from "@/lib/repositories/github-connection";
+import { createApprovalDraftForCaller } from "@/lib/repositories/approval";
 import { generateTestPlan, isPlanWellFormed, checkStepCountLimit } from "@/mastra/agents/test-planner.agent";
 import { runQaInvestigation } from "@/mastra/workflows/qa-investigation.workflow";
 import { ERROR_REASON_VALUES } from "@/db/enums";
@@ -159,6 +160,9 @@ export async function startRunAction(_prevState: StartRunState, formData: FormDa
       modelCalls: [],
       report,
     });
+    // D9/GitHub-Write-Path: drafts the one-write approval right after the report that
+    // needs it is persisted — a no-op for PASS (createApprovalDraftForCaller's own guard).
+    await createApprovalDraftForCaller(callerId, dbRunId, { objective, repository, applicationUrl }, report);
   } catch (error) {
     const reason = (error as { reason?: string } | undefined)?.reason;
     await recordRunResultForCaller(callerId, dbRunId, {

@@ -23,3 +23,8 @@ export const HYPOTHESIS_STATUS_VALUES = ["PROPOSED", "VALIDATING", "SUPPORTED", 
 export const HYPOTHESIS_EVIDENCE_ROLE_VALUES = ["SUPPORTING", "CONTRADICTING"] as const;
 
 export const REPORT_RESULT_VALUES = ["PASS", "FAIL", "INCONCLUSIVE"] as const;
+
+// D9/GitHub-Write-Path: PRD §15's Approval state machine. EXPIRED is reached lazily (no
+// background worker exists in this codebase — see approval.ts's own comment), not via a
+// periodic sweep process, but the value set itself is unchanged from the PRD's shape.
+export const APPROVAL_STATUS_VALUES = ["PENDING", "APPROVED", "REJECTED", "EXPIRED"] as const;
