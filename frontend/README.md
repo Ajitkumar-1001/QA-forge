@@ -51,6 +51,44 @@ Every structured agent call is defensively re-validated against its Zod schema (
 - **Credentials never touch a Run object** — `Run.hasCredential` is a boolean; the actual secret flows straight from env to the login step and is redacted from every piece of evidence (headers, bodies, URLs) before that evidence exists, not after.
 - **Read-only everywhere but one write** — the repository investigator only clones and greps. The *only* write QAForge ever makes is the GitHub issue it creates after a human clicks **Approve** on a drafted issue body.
 
+## GitHub integration
+
+```mermaid
+graph LR
+  subgraph GH[GitHub]
+    OAuthP[OAuth App - sign-in]
+    RepoSrc[(Target Repository)]
+    IssueOut[Issue created]
+  end
+
+  subgraph QF[QA-Forge]
+    User[Developer]
+    Settings[Settings: connect PAT]
+    Conn[(GithubConnection - encrypted)]
+    Run[Start Run]
+    Browser[Browser Execution - Playwright]
+    Fail{Step failed?}
+    Investigator[Repository Investigator - read-only clone+grep]
+    Agents[Root Cause + Validator agents]
+    Report[(Report)]
+    Approve{Human approves?}
+  end
+
+  User -->|sign in| OAuthP -->|session| User
+  User -->|paste PAT| Settings --> Conn
+  User -->|objective + URL| Run --> Browser
+  Browser --> Fail
+  Fail -->|PASS| Report
+  Fail -->|FAIL| Investigator
+  Conn -.->|token| Investigator
+  Investigator -->|clone| RepoSrc
+  Investigator --> Agents --> Report
+  Report --> Approve
+  Approve -->|yes| IssueOut
+  Conn -.->|token| IssueOut
+  Approve -->|no| Report
+```
+
 ## Project layout
 
 ```

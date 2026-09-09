@@ -2,3 +2,5 @@ vault-qa/
 .specify/
 .claude/
 .gstack/
+diagrams/
+node_modules/
