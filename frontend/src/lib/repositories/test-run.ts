@@ -49,54 +49,121 @@ function rowToTestRun(row: Record<string, unknown>): TestRun {
   };
 }
 
+// 006-run-concurrency-cap: PRD D14's cap. Not PASSED/FAILED/ERROR — the three RUN_STATUS_VALUES
+// that are non-terminal. Kept as a literal list (not TERMINAL_STATUSES, a JS Set) because it
+// has to appear inside a raw SQL NOT IN clause, not JS code.
+const NON_TERMINAL_STATUS_SQL = sql`('PASSED', 'FAILED', 'ERROR')`;
+
+/**
+ * Courtesy early-exit, NOT the enforcement boundary — `startRunForCaller`'s own atomic,
+ * lock-protected count condition is what actually guarantees the cap (FR-002/003/004,
+ * empirically race-free — research.md Decision 2). This is a plain, unlocked read, called
+ * by both `cli/run.ts` and `startRunAction` *before* `createProjectForCaller`, purely so
+ * the ordinary (non-racing, overwhelmingly common) rejected request doesn't create an
+ * orphaned Project/TestScenario pair first. Under a genuine simultaneous-request race, this
+ * check alone cannot prevent one racer's Project/TestScenario from still being created
+ * before it's rejected at the real (`startRunForCaller`) boundary — an accepted, narrow,
+ * documented residual (spec.md Edge Cases), the same orphan class `not_found_or_not_owned`
+ * already produces today when ownership changes between calls.
+ */
+export async function hasCapacityForCaller(callerId: string): Promise<boolean> {
+  const result = await db.execute(sql`
+    SELECT count(*) AS count
+    FROM ${testRun} tr
+    JOIN ${testScenario} ts ON tr.scenario_id = ts.id
+    JOIN ${project} p ON ts.project_id = p.id
+    WHERE p.user_id = ${callerId} AND tr.status NOT IN ${NON_TERMINAL_STATUS_SQL}
+  `);
+  const count = Number((result.rows[0] as { count: string | number }).count);
+  return count < 5;
+}
+
 /**
  * Atomic, ownership-scoped insert-or-return-existing (research.md #4): folds ownership
  * (via the scenario -> project join) AND idempotency (ON CONFLICT) into one statement —
  * never a separate check-then-insert. `created: false` means an existing run for this
  * (scenarioId, idempotencyKey) was returned; that's a success case (FR-008), not an error.
+ *
+ * 006-run-concurrency-cap (research.md Decisions 1-3): also folds in PRD D14's 5-concurrent-
+ * run-per-user cap, in the same WHERE clause and the same callerId binding as ownership
+ * (Constitution III). Race-freedom under real concurrent requests for the same caller is
+ * NOT guaranteed by the WHERE-clause count condition alone (empirically verified to race —
+ * see research.md Decision 2) — it comes from the `pg_advisory_xact_lock` acquired first,
+ * inside the same transaction, keyed on callerId, so two concurrent calls for the same caller
+ * fully serialize; different callers never block each other.
  */
 export async function startRunForCaller(
   callerId: string,
   input: { scenarioId: string; idempotencyKey: string },
-): Promise<{ run: TestRun; created: boolean } | { ok: false; reason: "not_found_or_not_owned" }> {
+): Promise<
+  | { run: TestRun; created: boolean }
+  | { ok: false; reason: "not_found_or_not_owned" | "RATE_LIMITED" }
+> {
   const newId = crypto.randomUUID();
 
-  const inserted = await db.execute(sql`
-    INSERT INTO ${testRun} (id, scenario_id, idempotency_key, status, started_at)
-    SELECT ${newId}, ts.id, ${input.idempotencyKey}, 'PLANNING', now()
-    FROM ${testScenario} ts
-    JOIN ${project} p ON ts.project_id = p.id
-    WHERE ts.id = ${input.scenarioId} AND p.user_id = ${callerId}
-    ON CONFLICT (scenario_id, idempotency_key) DO NOTHING
-    RETURNING *
-  `);
+  return db.transaction(async (tx) => {
+    // Serializes admission decisions per-caller (research.md Decision 2) — auto-released on
+    // commit/rollback, so a crashed or errored request can never leave a stale lock behind.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${callerId})::bigint)`);
 
-  if (inserted.rows.length > 0) {
-    return { run: rowToTestRun(inserted.rows[0] as Record<string, unknown>), created: true };
-  }
+    const inserted = await tx.execute(sql`
+      INSERT INTO ${testRun} (id, scenario_id, idempotency_key, status, started_at)
+      SELECT ${newId}, ts.id, ${input.idempotencyKey}, 'PLANNING', now()
+      FROM ${testScenario} ts
+      JOIN ${project} p ON ts.project_id = p.id
+      WHERE ts.id = ${input.scenarioId} AND p.user_id = ${callerId}
+        AND (
+          SELECT count(*) FROM ${testRun} tr2
+          JOIN ${testScenario} ts2 ON tr2.scenario_id = ts2.id
+          JOIN ${project} p2 ON ts2.project_id = p2.id
+          WHERE p2.user_id = ${callerId} AND tr2.status NOT IN ${NON_TERMINAL_STATUS_SQL}
+        ) < 5
+      ON CONFLICT (scenario_id, idempotency_key) DO NOTHING
+      RETURNING *
+    `);
 
-  // Empty result is ambiguous by construction (research.md #4): not-found/not-owned, or a
-  // genuine conflict. Re-select, scoped identically, to tell the two apart.
-  const existing = await db
-    .select({ run: testRun })
-    .from(testRun)
-    .innerJoin(testScenario, eq(testRun.scenarioId, testScenario.id))
-    .innerJoin(project, eq(testScenario.projectId, project.id))
-    .where(
-      and(
-        eq(testScenario.id, input.scenarioId),
-        eq(testRun.idempotencyKey, input.idempotencyKey),
-        eq(project.userId, callerId),
-      ),
-    )
-    .limit(1);
+    if (inserted.rows.length > 0) {
+      return { run: rowToTestRun(inserted.rows[0] as Record<string, unknown>), created: true };
+    }
 
-  const existingRun = existing[0]?.run;
-  if (existingRun) {
-    return { run: existingRun, created: false };
-  }
+    // Empty result is ambiguous by construction (research.md #4): not-found/not-owned, a
+    // genuine idempotency conflict, or (006) the cap. Re-select, scoped identically, to tell
+    // them apart — cheapest, most specific case first.
+    const existing = await tx
+      .select({ run: testRun })
+      .from(testRun)
+      .innerJoin(testScenario, eq(testRun.scenarioId, testScenario.id))
+      .innerJoin(project, eq(testScenario.projectId, project.id))
+      .where(
+        and(
+          eq(testScenario.id, input.scenarioId),
+          eq(testRun.idempotencyKey, input.idempotencyKey),
+          eq(project.userId, callerId),
+        ),
+      )
+      .limit(1);
 
-  return { ok: false, reason: "not_found_or_not_owned" };
+    const existingRun = existing[0]?.run;
+    if (existingRun) {
+      return { run: existingRun, created: false };
+    }
+
+    // Not a conflict. The only remaining question is whether the scenario is even owned by
+    // this caller — a scenario's ownership never changes after creation (no feature edits
+    // project.user_id or moves a scenario between projects), so this re-select needs no lock
+    // of its own; it only classifies an already-decided outcome, never makes a new one.
+    const owned = await tx
+      .select({ id: testScenario.id })
+      .from(testScenario)
+      .innerJoin(project, eq(testScenario.projectId, project.id))
+      .where(and(eq(testScenario.id, input.scenarioId), eq(project.userId, callerId)))
+      .limit(1);
+
+    if (owned.length === 0) {
+      return { ok: false, reason: "not_found_or_not_owned" };
+    }
+    return { ok: false, reason: "RATE_LIMITED" };
+  });
 }
 
 export type RecordRunResultInput = {

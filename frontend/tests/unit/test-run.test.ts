@@ -307,6 +307,89 @@ describe("startRunForCaller — FR-007/FR-008 idempotency under concurrency (SC-
   });
 });
 
+describe("startRunForCaller — 006-run-concurrency-cap (PRD D14, FR-001/FR-002/FR-004)", () => {
+  // Seeds N non-terminal test_run rows directly (not through startRunForCaller) — these
+  // tests are about the 6th call's behavior given an existing count, not about how the
+  // first N rows themselves were created.
+  async function seedRuns(status: (typeof schema.testRunStatusEnum.enumValues)[number], count: number, projectScenarioId = scenarioId) {
+    await db.insert(schema.testRun).values(
+      Array.from({ length: count }, (_, i) => ({
+        id: crypto.randomUUID(),
+        scenarioId: projectScenarioId,
+        idempotencyKey: `seed-${status}-${i}-${crypto.randomUUID()}`,
+        status,
+        startedAt: new Date(),
+      })),
+    );
+  }
+
+  it("a 6th non-terminal run is rejected as RATE_LIMITED once 5 already exist", async () => {
+    await seedRuns("RUNNING", 5);
+    const result = await startRunForCaller("user-a", { scenarioId, idempotencyKey: "the-6th" });
+    expect(result).toEqual({ ok: false, reason: "RATE_LIMITED" });
+
+    const rows = await db.query.testRun.findMany({ where: (t, { eq }) => eq(t.idempotencyKey, "the-6th") });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("a 5th non-terminal run still succeeds when only 4 exist", async () => {
+    await seedRuns("PLANNING", 4);
+    const result = await startRunForCaller("user-a", { scenarioId, idempotencyKey: "the-5th" });
+    expect(result).not.toHaveProperty("ok", false);
+    expect((result as { created: boolean }).created).toBe(true);
+  });
+
+  it("PASSED/FAILED/ERROR runs never count toward the cap, however many exist", async () => {
+    await seedRuns("PASSED", 3);
+    await seedRuns("FAILED", 3);
+    await seedRuns("ERROR", 3);
+    // 9 terminal runs on the books; still 0 non-terminal, so this succeeds same as a
+    // brand-new caller would.
+    const result = await startRunForCaller("user-a", { scenarioId, idempotencyKey: "after-terminal" });
+    expect(result).not.toHaveProperty("ok", false);
+    expect((result as { created: boolean }).created).toBe(true);
+  });
+
+  it("the cap is shared across a caller's projects, not counted per-project", async () => {
+    const [projectA2] = await db
+      .insert(schema.project)
+      .values({ id: "project-a2", userId: "user-a", applicationUrl: "https://a2.example.com", repository: "owner/repo2" })
+      .returning();
+    const [scenarioA2] = await db
+      .insert(schema.testScenario)
+      .values({ id: "scenario-a2", projectId: projectA2!.id, objective: "a second project's objective" })
+      .returning();
+
+    await seedRuns("RUNNING", 3, scenarioId);
+    await seedRuns("INVESTIGATING", 2, scenarioA2!.id);
+
+    // 5 non-terminal runs total for user-a, split 3/2 across two projects — a 6th, against
+    // either project's scenario, is still rejected.
+    const result = await startRunForCaller("user-a", { scenarioId: scenarioA2!.id, idempotencyKey: "cross-project-6th" });
+    expect(result).toEqual({ ok: false, reason: "RATE_LIMITED" });
+  });
+
+  it("a non-owning caller at the cap still gets not_found_or_not_owned, never RATE_LIMITED", async () => {
+    await seedRuns("RUNNING", 5);
+    const result = await startRunForCaller("user-b", { scenarioId, idempotencyKey: "not-mine" });
+    expect(result).toEqual({ ok: false, reason: "not_found_or_not_owned" });
+  });
+
+  it("a freed slot is usable immediately once one of the 5 reaches a terminal state (FR-008, quickstart Scenario 3)", async () => {
+    await seedRuns("RUNNING", 5);
+    const rejected = await startRunForCaller("user-a", { scenarioId, idempotencyKey: "still-at-cap" });
+    expect(rejected).toEqual({ ok: false, reason: "RATE_LIMITED" });
+
+    // One of the 5 finishes — no manual reset, just a normal terminal transition.
+    const [oneOfFive] = await db.query.testRun.findMany({ where: (t, { eq }) => eq(t.scenarioId, scenarioId), limit: 1 });
+    await recordRunResultForCaller("user-a", oneOfFive!.id, { status: "PASSED", errorReason: null, modelCalls: [], report: null });
+
+    const result = await startRunForCaller("user-a", { scenarioId, idempotencyKey: "freed-slot" });
+    expect(result).not.toHaveProperty("ok", false);
+    expect((result as { created: boolean }).created).toBe(true);
+  });
+});
+
 describe("listRunsForCaller — FR-001/FR-011 ownership-fixture (SEC-009)", () => {
   it("a caller with no projects/runs gets an empty list, not an error", async () => {
     expect(await listRunsForCaller("user-b")).toEqual([]);
