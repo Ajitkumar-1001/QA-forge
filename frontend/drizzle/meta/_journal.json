@@ -22,6 +22,13 @@
       "when": 1788892408421,
       "tag": "0002_wide_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788919245743,
+      "tag": "0003_brave_ironclad",
+      "breakpoints": true
     }
   ]
 }

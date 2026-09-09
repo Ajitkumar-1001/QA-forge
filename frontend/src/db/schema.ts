@@ -194,6 +194,31 @@ export const testScenario = pgTable(
   (table) => [index("test_scenario_projectId_idx").on(table.projectId)],
 );
 
+// --- 005-run-launch-ui ---
+// 1:1 with test_scenario, same shape as report <-> test_run (003) — a credential's
+// lifecycle is entirely owned by the scenario that needed it. test_scenario.
+// credentials_reference stores this row's id when one exists (still an untyped text
+// column, per 003's own "opaque pointer" design — see data-model.md).
+export const credential = pgTable(
+  "credential",
+  {
+    id: text("id").primaryKey(),
+    testScenarioId: text("test_scenario_id")
+      .notNull()
+      .unique()
+      .references(() => testScenario.id, { onDelete: "cascade" }),
+
+    encryptedValue: text("encrypted_value").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+);
+
+export const credentialRelations = relations(credential, ({ one }) => ({
+  testScenario: one(testScenario, { fields: [credential.testScenarioId], references: [testScenario.id] }),
+}));
+
+export type Credential = typeof credential.$inferSelect;
+
 export const testRun = pgTable(
   "test_run",
   {
@@ -322,6 +347,7 @@ export const projectRelations = relations(project, ({ one, many }) => ({
 export const testScenarioRelations = relations(testScenario, ({ one, many }) => ({
   project: one(project, { fields: [testScenario.projectId], references: [project.id] }),
   testRuns: many(testRun),
+  credential: one(credential),
 }));
 
 export const testRunRelations = relations(testRun, ({ one, many }) => ({
