@@ -1,0 +1,34 @@
+import { randomBytes } from "node:crypto";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+
+process.env.DATABASE_URL ??= "postgres://x:x@localhost:5432/x";
+process.env.GITHUB_CLIENT_ID ??= "x";
+process.env.GITHUB_CLIENT_SECRET ??= "x";
+process.env.AUTH_ENCRYPTION_KEY ??= randomBytes(32).toString("base64");
+
+let getCallerUser: typeof import("@/lib/auth").getCallerUser;
+let auth: typeof import("@/lib/auth").auth;
+
+beforeAll(async () => {
+  ({ getCallerUser, auth } = await import("@/lib/auth"));
+});
+
+describe("getCallerUser — shell sidebar/topbar needs the caller's name/email, not just id", () => {
+  it("resolves to the caller's id/name/email when a valid session exists", async () => {
+    vi.spyOn(auth.api, "getSession").mockResolvedValueOnce({
+      session: {} as never,
+      user: { id: "user-1", name: "Dana Okafor", email: "dana@qaforge.dev" } as never,
+    });
+    expect(await getCallerUser(new Headers())).toEqual({ id: "user-1", name: "Dana Okafor", email: "dana@qaforge.dev" });
+  });
+
+  it("resolves to null when there is no session", async () => {
+    vi.spyOn(auth.api, "getSession").mockResolvedValueOnce(null);
+    expect(await getCallerUser(new Headers())).toBeNull();
+  });
+
+  it("resolves to null (denied) rather than throwing when session resolution fails (SEC-006 — an infra error is never treated as authenticated)", async () => {
+    vi.spyOn(auth.api, "getSession").mockRejectedValueOnce(new Error("DB connection failed"));
+    await expect(getCallerUser(new Headers())).resolves.toBeNull();
+  });
+});
