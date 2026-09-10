@@ -4,27 +4,12 @@ import * as React from "react";
 import { usePathname } from "next/navigation";
 import { AppSidebar, CommandMenu, TopBar } from "./shell";
 import { ToastRegion } from "./overlays";
-import { useQAForge, LIVE_STATUSES } from "./provider";
-import { MobileReview } from "./screens/mobile";
+import { useQAForge } from "./provider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 const TITLES: Record<string, string> = {
-  dashboard: "Overview", runs: "Runs", "new-run": "New QA Run", "test-plans": "Test Plans",
-  findings: "Findings", repositories: "Repositories", environments: "Environments",
-  "agent-activity": "Agent Activity", policies: "Policies", settings: "Settings", approval: "Approval Draft",
+  dashboard: "Overview", runs: "Runs", "new-run": "New QA Run", settings: "Settings", approval: "Approval Draft",
 };
-
-function useIsMobile(breakpoint = 720) {
-  const [isMobile, setIsMobile] = React.useState(false);
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
-    const onChange = () => setIsMobile(mql.matches);
-    onChange();
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  }, [breakpoint]);
-  return isMobile;
-}
 
 function currentScreen(pathname: string): { screen: string; runId?: string } {
   const segs = pathname.replace(/^\/|\/$/g, "").split("/").filter(Boolean);
@@ -39,11 +24,17 @@ function currentScreen(pathname: string): { screen: string; runId?: string } {
 
 const SHELL_LESS_ROUTES = ["/sign-in"];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+// The sidebar's own responsive Sheet (src/components/ui/sidebar.tsx's useIsMobile) already
+// handles narrow viewports — this component used to duplicate that with its own
+// useIsMobile() + a full-page swap to a fully mock MobileReview screen, discarding whatever
+// real page was actually being viewed. Removed; real content now renders at every width.
+export function AppShell({ children, liveRunCount, pendingApprovalCount }: {
+  children: React.ReactNode;
+  liveRunCount: number;
+  pendingApprovalCount: number;
+}) {
   const pathname = usePathname();
-  const { runs, findings, approvals, toasts, go, dismissToast } = useQAForge();
-
-  const isMobile = useIsMobile();
+  const { toasts, go, dismissToast } = useQAForge();
   const [cmdOpen, setCmdOpen] = React.useState(false);
 
   if (SHELL_LESS_ROUTES.includes(pathname)) {
@@ -51,49 +42,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const { screen, runId } = currentScreen(pathname);
-  const run = runId ? runs.find((r) => r.id === runId) : undefined;
-  const envForBar = run ? run.environment : screen === "policies" || screen === "environments" ? undefined : "STAGING";
-  const crumbs = run
+  // No real per-run title/environment is fetched here (that would mean a second data fetch
+  // just for the breadcrumb) — the run's own id is all the breadcrumb shows.
+  const crumbs = runId
     ? [
         { label: "Runs", onClick: () => go("runs") },
-        { label: run.id, mono: true, onClick: screen === "approval" ? () => go("run", { runId: run.id }) : undefined },
+        { label: runId, mono: true, onClick: screen === "approval" ? () => go("run", { runId }) : undefined },
         ...(screen === "approval" ? [{ label: "Approval Draft" }] : []),
       ]
     : [{ label: "qa-forge", onClick: () => go("dashboard") }, { label: TITLES[screen] || "Overview" }];
   const activeNav = ["run", "new-run", "approval"].includes(screen) ? "runs" : screen;
-  const liveCount = runs.filter((r) => LIVE_STATUSES.includes(r.status)).length;
-  const pendingCount = Object.values(approvals).filter((a) => a.status === "PENDING").length;
-  const openCritical = findings.filter((f) => f.severity === "CRITICAL" && !["RESOLVED", "DISMISSED"].includes(f.status)).length;
-
-  if (isMobile) {
-    return (
-      <div style={{ height: "100vh", display: "flex", justifyContent: "center", background: "var(--background)" }}>
-        <div style={{ width: "min(100%, 420px)", height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
-
-          <MobileReview onSwitchToDesktop={() => go("dashboard")} />
-        </div>
-        <ToastRegion toasts={toasts} onDismiss={dismissToast} />
-      </div>
-    );
-  }
 
   return (
     <SidebarProvider style={{ "--sidebar-width": "248px", "--sidebar-width-icon": "52px" } as React.CSSProperties}>
-      <AppSidebar activeId={activeNav} counts={{ runs: liveCount, findings: openCritical }} />
+      <AppSidebar activeId={activeNav} counts={{ runs: liveRunCount }} />
       <SidebarInset>
-        <TopBar breadcrumb={crumbs} environment={envForBar} onSearch={() => setCmdOpen(true)} hasNotifications={liveCount + pendingCount > 0} onNotifications={() => go("agent-activity")} onUser={() => go("settings")} />
+        {/* onNotifications used to open the deleted /agent-activity mock route — repointed
+            to /runs, the closest real surface pending a real notification-center design. */}
+        <TopBar breadcrumb={crumbs} onSearch={() => setCmdOpen(true)} hasNotifications={liveRunCount + pendingApprovalCount > 0} onNotifications={() => go("runs")} onUser={() => go("settings")} />
         <div className="flex flex-1 flex-col overflow-auto">{children}</div>
       </SidebarInset>
-      <CommandMenu
-        open={cmdOpen}
-        onOpenChange={setCmdOpen}
-        onAction={(id) => {
-          if (id === "search-finding") go("findings");
-          else if (id.startsWith("QF-")) go("run", { runId: id });
-          else go(id);
-        }}
-        extraGroups={[{ heading: "Recent runs", items: runs.slice(0, 3).map((r) => ({ id: r.id, label: `${r.id} · ${r.objective}`, icon: "Play", hint: r.status.replace("_", " ") })) }]}
-      />
+      {/* extraGroups (a "Recent runs" quick-jump list keyed by the mock's QF-#### id scheme)
+          removed — real run ids are UUIDs, and there is no real recent-runs fetch wired to
+          this command palette yet (YAGNI: no user-visible need identified for it). */}
+      <CommandMenu open={cmdOpen} onOpenChange={setCmdOpen} onAction={(id) => go(id)} />
       <ToastRegion toasts={toasts} onDismiss={dismissToast} />
     </SidebarProvider>
   );
