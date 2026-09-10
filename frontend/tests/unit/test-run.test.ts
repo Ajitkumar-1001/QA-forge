@@ -431,3 +431,47 @@ describe("listRunsForCaller — FR-001/FR-011 ownership-fixture (SEC-009)", () =
     expect(runs.map((r) => r.id)).toEqual([second.run.id, first.run.id]);
   });
 });
+
+describe("getShellCountsForCaller — real replacement for AppShell's mock runs/approvals counts", () => {
+  it("counts only this caller's non-terminal runs and PENDING approvals", async () => {
+    // Two non-terminal runs and one terminal run for user-a.
+    await startRunForCaller("user-a", { scenarioId, idempotencyKey: "live-1" });
+    const secondLive = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "live-2" })) as { run: TestRun };
+    const terminal = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "terminal-1" })) as { run: TestRun };
+    await recordRunResultForCaller("user-a", terminal.run.id, { status: "PASSED", errorReason: null, modelCalls: [], report: null });
+
+    // One PENDING approval on the second live run.
+    await db.insert(schema.approval).values({
+      id: "approval-1",
+      runId: secondLive.run.id,
+      status: "PENDING",
+      draftTitle: "A drafted issue",
+      draftBody: "Body",
+    });
+
+    const { getShellCountsForCaller } = await import("@/lib/repositories/test-run");
+    expect(await getShellCountsForCaller("user-a")).toEqual({ liveRunCount: 2, pendingApprovalCount: 1 });
+  });
+
+  it("never counts another caller's runs or approvals", async () => {
+    await startRunForCaller("user-a", { scenarioId, idempotencyKey: "mine" });
+
+    const [projectB] = await db
+      .insert(schema.project)
+      .values({ id: "project-b-counts", userId: "user-b", applicationUrl: "https://b.example.com", repository: "b/repo" })
+      .returning();
+    const [scenarioB] = await db
+      .insert(schema.testScenario)
+      .values({ id: "scenario-b-counts", projectId: projectB!.id, objective: "b's objective" })
+      .returning();
+    await startRunForCaller("user-b", { scenarioId: scenarioB!.id, idempotencyKey: "not-mine" });
+
+    const { getShellCountsForCaller } = await import("@/lib/repositories/test-run");
+    expect(await getShellCountsForCaller("user-a")).toEqual({ liveRunCount: 1, pendingApprovalCount: 0 });
+  });
+
+  it("a caller with no runs at all gets zero counts, not an error", async () => {
+    const { getShellCountsForCaller } = await import("@/lib/repositories/test-run");
+    expect(await getShellCountsForCaller("user-b")).toEqual({ liveRunCount: 0, pendingApprovalCount: 0 });
+  });
+});

@@ -10,6 +10,7 @@ import {
   hypothesisEvidence,
   report,
   reportHypothesis,
+  approval,
   type TestRun,
   type TestStep,
   type Evidence as EvidenceRow,
@@ -371,6 +372,37 @@ export async function listRunsForCaller(callerId: string): Promise<RunSummary[]>
     .orderBy(desc(testRun.startedAt));
 
   return rows;
+}
+
+/**
+ * Real replacement for AppShell's mock sidebar/topbar counts (runs.filter(LIVE_STATUSES)
+ * and approvals.filter(PENDING) against src/data/qaforge.ts fixture state). Same raw-SQL
+ * count idiom and NON_TERMINAL_STATUS_SQL constant hasCapacityForCaller already uses, for
+ * consistency — not a drizzle query-builder count, to match the existing file's convention.
+ */
+export async function getShellCountsForCaller(
+  callerId: string,
+): Promise<{ liveRunCount: number; pendingApprovalCount: number }> {
+  const liveRunResult = await db.execute(sql`
+    SELECT count(*) AS count
+    FROM ${testRun} tr
+    JOIN ${testScenario} ts ON tr.scenario_id = ts.id
+    JOIN ${project} p ON ts.project_id = p.id
+    WHERE p.user_id = ${callerId} AND tr.status NOT IN ${NON_TERMINAL_STATUS_SQL}
+  `);
+  const liveRunCount = Number((liveRunResult.rows[0] as { count: string | number }).count);
+
+  const pendingApprovalResult = await db.execute(sql`
+    SELECT count(*) AS count
+    FROM ${approval} a
+    JOIN ${testRun} tr ON a.run_id = tr.id
+    JOIN ${testScenario} ts ON tr.scenario_id = ts.id
+    JOIN ${project} p ON ts.project_id = p.id
+    WHERE p.user_id = ${callerId} AND a.status = 'PENDING'
+  `);
+  const pendingApprovalCount = Number((pendingApprovalResult.rows[0] as { count: string | number }).count);
+
+  return { liveRunCount, pendingApprovalCount };
 }
 
 export type FullRun = TestRun & {
