@@ -1,18 +1,9 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import dynamic from "next/dynamic";
-import { getCallerId } from "@/lib/auth";
 
-const RepositoriesScreen = dynamic(() => import("@/components/qaforge/screens/workspace").then(mod => mod.RepositoriesScreen), {
-
-});
-
-// A-first (login-gate plan, backstop fix): matches dashboard/runs/runs-new's own defense-in-
-// depth doctrine — proxy.ts gates this route already, but doesn't fail closed if its own
-// @/lib/auth import ever throws (e.g. DATABASE_URL unset); this page-level check does.
-export default async function Page() {
-  const callerId = await getCallerId(await headers());
-  if (!callerId) redirect("/sign-in");
-
-  return <RepositoriesScreen />;
+// The Repositories screen was a mock duplicate of data /settings already shows for real
+// (the connected GithubConnection's live repo list, verifyAndListGithubRepositories) —
+// deleted rather than wired a second time. Redirect instead of a bare 404 so an old
+// bookmark or sidebar muscle-memory still lands somewhere useful.
+export default function Page() {
+  redirect("/settings");
 }

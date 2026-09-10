@@ -23,20 +23,15 @@ import {
 export interface SidebarNavItem { id: string; label: string; icon?: string; href: string; count?: number }
 export interface SidebarNavGroup { label?: string; items: SidebarNavItem[] }
 
+// Test Plans, Findings, Repositories, Environments, Agent Activity, Policies removed:
+// no PRD backing / no DB table, or a duplicate of a real surface wired elsewhere
+// (Repositories duplicated /settings, Agent Activity duplicated run-detail's Agent Trace).
 export const APP_NAV: SidebarNavGroup[] = [
   { items: [{ id: "dashboard", label: "Overview", icon: "LayoutDashboard", href: "/dashboard" }] },
   { label: "Runs", items: [
     { id: "runs", label: "Runs", icon: "Play", href: "/runs" },
-    { id: "test-plans", label: "Test Plans", icon: "FlaskConical", href: "/test-plans" },
-    { id: "findings", label: "Findings", icon: "Bug", href: "/findings" },
-  ] },
-  { label: "Workspace", items: [
-    { id: "repositories", label: "Repositories", icon: "GitBranch", href: "/repositories" },
-    { id: "environments", label: "Environments", icon: "Server", href: "/environments" },
   ] },
   { label: "System", items: [
-    { id: "agent-activity", label: "Agent Activity", icon: "Bot", href: "/agent-activity" },
-    { id: "policies", label: "Policies", icon: "ShieldCheck", href: "/policies" },
     { id: "settings", label: "Settings", icon: "Settings", href: "/settings" },
   ] },
 ];
@@ -144,12 +139,9 @@ export function commandGroups(): CommandGroup[] {
   return [
     { heading: "Actions", items: [
       { id: "new-run", label: "New QA Run", icon: "Play", shortcut: ["N"] },
-      { id: "search-finding", label: "Search Finding", icon: "Bug" },
     ] },
     { heading: "Go to", items: [
       { id: "runs", label: "Go to Runs", icon: "ListChecks", shortcut: ["G", "R"] },
-      { id: "repositories", label: "Open Repository", icon: "GitBranch" },
-      { id: "agent-activity", label: "Open Agent Activity", icon: "Bot" },
       { id: "settings", label: "Open Settings", icon: "Settings", shortcut: ["G", "S"] },
     ] },
   ];
