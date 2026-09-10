@@ -6,7 +6,8 @@ import { Badge, Button, Card, DataTable, type Column, Progress, Avatar, Separato
 import { Input, Select, type SelectOption } from "./forms";
 import { Tabs as EvidenceTabsBase } from "./overlays";
 import { AlertDialog, DropdownMenu, type AlertDialogProps, type MenuItemDef } from "./overlays";
-import { LIVE_STATUSES, runStatusSchema, type ConsoleEntry, type Finding, type NetworkRequest, type Run, type RunStatus, type SourceFile, type TraceEvent } from "@/data/qaforge";
+import type { RunStatus } from "@/mastra/types";
+import { LIVE_STATUSES, runStatusSchema, type ConsoleEntry, type Finding, type NetworkRequest, type Run, type SourceFile, type TraceEvent } from "@/data/qaforge";
 import { cn } from "cn";
 
 const LABEL_CLS = "text-[11px] font-medium uppercase tracking-[0.04em] text-text-tertiary";
