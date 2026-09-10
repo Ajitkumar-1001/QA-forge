@@ -101,18 +101,6 @@ export interface Finding {
   inconclusive?: boolean;
 }
 
-export interface Approval {
-  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
-  findingId: string;
-  repository: string;
-  requested?: string;
-  expires?: string;
-  expiresIn?: string;
-  decidedBy?: string;
-  decided?: string;
-  issue?: string;
-}
-
 export interface NetworkRequest {
   id: number;
   method: string;
@@ -284,11 +272,6 @@ export const findings: Finding[] = [
   { id: "F-0405", severity: "LOW", title: "Lockout banner overlaps the password field at 320px", repository: "qa-forge/api", runId: "QF-0214", status: "OPEN", confidence: 61, created: "Yesterday" },
   { id: "F-0396", severity: "HIGH", title: "Return URL dropped after session expiry redirect", repository: "qa-forge/web", runId: "QF-0208", status: "OPEN", confidence: 38, created: "Sep 1", inconclusive: true },
 ];
-
-export const initialApprovals: Record<string, Approval> = {
-  "QF-0216": { status: "PENDING", findingId: "F-0409", repository: "qa-forge/api", requested: "Today 12:26", expires: "Tomorrow 12:26", expiresIn: "21h 08m" },
-  "QF-0214": { status: "APPROVED", findingId: "F-0406", repository: "qa-forge/api", requested: "Yesterday 22:31", decidedBy: "Marcus Lee", decided: "Yesterday 22:40", issue: "qa-forge/api#318" },
-};
 
 export const network: NetworkRequest[] = [
   { id: 1, method: "GET", url: "/login", status: 200, duration: 212, initiator: "navigation", size: "18.4 kB" },
