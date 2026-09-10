@@ -28,7 +28,7 @@ vi.mock("@/lib/github-api", () => ({
 
 let db: typeof import("@/db/client").db;
 let schema: typeof import("@/db/schema");
-let buildApprovalDraft: typeof import("@/lib/repositories/approval").buildApprovalDraft;
+let buildApprovalDraft: typeof import("@/lib/approval-draft").buildApprovalDraft;
 let createApprovalDraftForCaller: typeof import("@/lib/repositories/approval").createApprovalDraftForCaller;
 let getApprovalForCaller: typeof import("@/lib/repositories/approval").getApprovalForCaller;
 let approveForCaller: typeof import("@/lib/repositories/approval").approveForCaller;
@@ -56,7 +56,8 @@ const PASS_REPORT: Report = { result: "PASS", steps: [], evidence: [], hypothese
 beforeEach(async () => {
   ({ db } = await import("@/db/client"));
   schema = await import("@/db/schema");
-  ({ buildApprovalDraft, createApprovalDraftForCaller, getApprovalForCaller, approveForCaller, rejectForCaller } = await import(
+  ({ buildApprovalDraft } = await import("@/lib/approval-draft"));
+  ({ createApprovalDraftForCaller, getApprovalForCaller, approveForCaller, rejectForCaller } = await import(
     "@/lib/repositories/approval"
   ));
   ({ upsertGithubConnectionForCaller } = await import("@/lib/repositories/github-connection"));

@@ -3,8 +3,8 @@ import { db } from "@/db/client";
 import { approval, testRun, testScenario, project, githubConnection, type Approval } from "@/db/schema";
 import { decrypt } from "@/lib/crypto";
 import { createGithubIssue, findExistingApprovalIssue } from "@/lib/github-api";
+import { buildApprovalDraft } from "@/lib/approval-draft";
 import type { Report } from "@/mastra/types";
-import type { Hypothesis } from "@/mastra/schemas/hypothesis.schema";
 
 // D9/GitHub-Write-Path (PRD §11/§14/§15): draft-generation + Approval creation is
 // Application Service code that runs right after a report is persisted, not a further
@@ -15,49 +15,6 @@ import type { Hypothesis } from "@/mastra/schemas/hypothesis.schema";
 // call succeeds," not a separate process picking up a persisted row.
 
 const APPROVAL_EXPIRY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Deterministic string templating from the Report's own structured fields (Constitution
- * Principle I; PRD's /speckit-clarify framing: "Report already supplies everything needed
- * for templating"), not an LLM call — this also means the hidden marker below is composed
- * without ever handing target-app/repo-sourced content (Principle II's "untrusted input")
- * to an LLM prompt, sidestepping the prompt-injection concern the vault's plan-eng-review
- * stage flags for the alternative (LLM-drafted) design.
- */
-export function buildApprovalDraft(
-  approvalId: string,
-  runId: string,
-  runInfo: { objective: string; repository: string; applicationUrl: string },
-  report: Report,
-  winningHypothesis: Hypothesis | undefined,
-): { title: string; body: string } {
-  const title = (
-    winningHypothesis
-      ? `QAForge: ${winningHypothesis.description}`
-      : `QAForge investigation ${report.result === "INCONCLUSIVE" ? "was inconclusive" : "failed"}: ${runInfo.objective}`
-  ).slice(0, 250);
-
-  const failedSteps = report.steps.filter((s) => s.status === "FAILED");
-  const stepsSection =
-    failedSteps.length > 0
-      ? failedSteps.map((s) => `- **${s.action}** — expected: ${s.expectedOutcome}${s.observed ? `; observed: ${s.observed}` : ""}`).join("\n")
-      : "_No individual step recorded a failure; see the root cause below._";
-
-  const body = [
-    `QAForge investigated **${runInfo.objective}** against \`${runInfo.applicationUrl}\` (\`${runInfo.repository}\`) and produced a **${report.result}** result${report.confidence !== null ? ` (confidence ${report.confidence.toFixed(2)})` : ""}.`,
-    "",
-    "## Root cause",
-    winningHypothesis ? winningHypothesis.description : "No hypothesis reached SUPPORTED status.",
-    "",
-    "## Failed steps",
-    stepsSection,
-    "",
-    `_Run: ${runId}_`,
-    `<!-- qaforge-approval:${approvalId} -->`,
-  ].join("\n");
-
-  return { title, body };
-}
 
 /**
  * Called once, immediately after recordRunResultForCaller persists a report (both
