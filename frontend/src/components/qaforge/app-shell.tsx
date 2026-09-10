@@ -28,10 +28,11 @@ const SHELL_LESS_ROUTES = ["/sign-in"];
 // handles narrow viewports — this component used to duplicate that with its own
 // useIsMobile() + a full-page swap to a fully mock MobileReview screen, discarding whatever
 // real page was actually being viewed. Removed; real content now renders at every width.
-export function AppShell({ children, liveRunCount, pendingApprovalCount }: {
+export function AppShell({ children, liveRunCount, pendingApprovalCount, user }: {
   children: React.ReactNode;
   liveRunCount: number;
   pendingApprovalCount: number;
+  user?: { name: string; email: string };
 }) {
   const pathname = usePathname();
   const { toasts, go, dismissToast } = useQAForge();
@@ -55,11 +56,11 @@ export function AppShell({ children, liveRunCount, pendingApprovalCount }: {
 
   return (
     <SidebarProvider style={{ "--sidebar-width": "248px", "--sidebar-width-icon": "52px" } as React.CSSProperties}>
-      <AppSidebar activeId={activeNav} counts={{ runs: liveRunCount }} />
+      <AppSidebar activeId={activeNav} counts={{ runs: liveRunCount }} user={user} />
       <SidebarInset>
         {/* onNotifications used to open the deleted /agent-activity mock route — repointed
             to /runs, the closest real surface pending a real notification-center design. */}
-        <TopBar breadcrumb={crumbs} onSearch={() => setCmdOpen(true)} hasNotifications={liveRunCount + pendingApprovalCount > 0} onNotifications={() => go("runs")} onUser={() => go("settings")} />
+        <TopBar breadcrumb={crumbs} onSearch={() => setCmdOpen(true)} hasNotifications={liveRunCount + pendingApprovalCount > 0} onNotifications={() => go("runs")} onUser={() => go("settings")} user={user} />
         <div className="flex flex-1 flex-col overflow-auto">{children}</div>
       </SidebarInset>
       {/* extraGroups (a "Recent runs" quick-jump list keyed by the mock's QF-#### id scheme)

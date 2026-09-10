@@ -203,3 +203,14 @@ export async function getCallerId(headers: Headers): Promise<string | null> {
     return null;
   }
 }
+
+// The shell's sidebar/topbar need the signed-in user's real name (GitHub OAuth already
+// populates user.name/email on first sign-in) — getCallerId alone discards it.
+export async function getCallerUser(headers: Headers): Promise<{ id: string; name: string; email: string } | null> {
+  try {
+    const session = await auth.api.getSession({ headers });
+    return session ? { id: session.user.id, name: session.user.name, email: session.user.email } : null;
+  } catch {
+    return null;
+  }
+}
