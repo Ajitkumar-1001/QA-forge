@@ -1,8 +1,11 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCallerId } from "@/lib/auth";
-import { PageHeader } from "@/components/qaforge/domain";
-import { RunLaunchForm } from "@/components/qaforge/run-history/run-launch-form";
+import dynamic from "next/dynamic";
+
+const RunLaunchForm = dynamic(() => import("@/components/qaforge/run-history/run-launch-form").then(mod => mod.RunLaunchForm))
+const PageHeader = dynamic(() => import("@/components/qaforge/domain").then(mod => mod.PageHeader))
+
 
 // 005-run-launch-ui: same Data Access Layer auth pattern as 004's runs/page.tsx — a
 // second, real authorization check here, not a reliance on /proxy.ts having already

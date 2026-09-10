@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createStep, createWorkflow } from "@mastra/core/workflows";
+import { RequestContext } from "@mastra/core/request-context";
 import { chromium, type Page } from "playwright";
 import {
   createNavigateTool,
@@ -73,30 +74,45 @@ const produceInconclusiveReportStep = createStep({
   },
 });
 
-function buildInvestigationWorkflow(deps: InvestigationRoundDeps, maxIterations: number) {
-  const loopStep = createStep({
-    id: "investigation-round",
-    inputSchema: investigationRoundStateSchema,
-    outputSchema: investigationRoundOutputSchema,
-    execute: async ({ inputData }) => runInvestigationRound(deps, inputData),
-  });
-
-  return createWorkflow({
-    id: "qa-investigation-loop",
-    inputSchema: investigationRoundStateSchema,
-    outputSchema: investigationOutcomeSchema,
-  })
-    .dountil(
-      loopStep,
-      async ({ inputData, iterationCount }) =>
-        isSupportedVerdict(inputData) || iterationCount >= maxIterations,
-    )
-    .branch([
-      [async ({ inputData }) => isSupportedVerdict(inputData), produceFailReportStep],
-      [async ({ inputData }) => isBudgetExhaustedVerdict(inputData), produceInconclusiveReportStep],
-    ])
-    .commit();
+// deps and maxIterations vary per investigation run, but the workflow object itself needs
+// to be built once (statically, so it can be registered on the Mastra instance) rather than
+// freshly per call. Mastra's requestContext is the per-run channel for exactly this: deps is
+// built once per run (preserving its internal iteration-counter closure, see
+// createInvestigationRoundDeps) and threaded through requestContext instead of a closure
+// param, so the same workflow object serves every run.
+interface InvestigationRunContext {
+  deps: InvestigationRoundDeps;
+  maxIterations: number;
 }
+
+const investigationRunContextSchema = z.custom<InvestigationRunContext>();
+
+const investigationRoundStep = createStep({
+  id: "investigation-round",
+  inputSchema: investigationRoundStateSchema,
+  outputSchema: investigationRoundOutputSchema,
+  requestContextSchema: investigationRunContextSchema,
+  execute: async ({ inputData, requestContext }) =>
+    runInvestigationRound(requestContext.get("deps"), inputData),
+});
+
+export const qaInvestigationWorkflow = createWorkflow({
+  id: "qa-investigation-loop",
+  inputSchema: investigationRoundStateSchema,
+  outputSchema: investigationOutcomeSchema,
+  requestContextSchema: investigationRunContextSchema,
+})
+  .dountil(
+    investigationRoundStep,
+    async ({ inputData, iterationCount, requestContext }) =>
+      isSupportedVerdict(inputData) ||
+      iterationCount >= requestContext.get<"maxIterations", number>("maxIterations"),
+  )
+  .branch([
+    [async ({ inputData }) => isSupportedVerdict(inputData), produceFailReportStep],
+    [async ({ inputData }) => isBudgetExhaustedVerdict(inputData), produceInconclusiveReportStep],
+  ])
+  .commit();
 
 async function checkCriterion(
   criterion: StepCriterion,
@@ -248,9 +264,15 @@ export async function runQaInvestigation(input: QaInvestigationInput): Promise<R
     evidence,
     runId: input.runId,
   });
-  const workflow = buildInvestigationWorkflow(deps, maxIterations);
-  const run = await workflow.createRun();
-  const result = await run.start({ inputData: { triedHypotheses: [], searchHistory: [] } });
+  const requestContext = new RequestContext<InvestigationRunContext>([
+    ["deps", deps],
+    ["maxIterations", maxIterations],
+  ]);
+  const run = await qaInvestigationWorkflow.createRun();
+  const result = await run.start({
+    inputData: { triedHypotheses: [], searchHistory: [] },
+    requestContext,
+  });
 
   if (result.status !== "success") {
     throw new Error(`Investigation workflow did not complete successfully: ${result.status}`);

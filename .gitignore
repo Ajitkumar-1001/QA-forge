@@ -4,3 +4,4 @@ vault-qa/
 .gstack/
 diagrams/
 node_modules/
+docs/superpowers/plans/*.md

@@ -24,4 +24,4 @@ Package manager is pnpm (`packageManager: pnpm@11.15.1`); don't use npm/yarn loc
 
 `next.config.ts` enables `reactCompiler: true` (paired with the `babel-plugin-react-compiler` devDependency), so avoid manual `useMemo`/`useCallback` workarounds the compiler already handles.
 
-`src/mastra/index.ts` holds a blank `Mastra` instance (empty `agents`/`workflows`) — not yet wired into `src/app`.
+`src/mastra/index.ts` registers all 4 agents (`testPlanner`, `rootCause`, `validator`, `browserExecution`) and the `qaInvestigation` workflow — but nothing in `src/app` reads from the `mastra` singleton itself; the real runtime path (`src/cli/run.ts`, `src/app/runs/actions.ts`) calls `runQaInvestigation`/`executeStepAction` as plain functions.
