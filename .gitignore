@@ -1,6 +1,7 @@
 vault-qa/
 .specify/
-.claude/
+.claude/*
+!.claude/settings.json
 .gstack/
 diagrams/
 node_modules/

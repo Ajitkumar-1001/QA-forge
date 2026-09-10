@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in */frontend/src/*.ts|*/frontend/src/*.tsx) rel=\"${f#*/frontend/}\"; out=$(cd frontend && pnpm exec eslint \"$rel\" 2>&1); code=$?; if [ $code -ne 0 ]; then msg=$(printf '%s' \"$out\" | jq -Rs .); printf '{\"systemMessage\":\"SEC-009/lint violation in %s\",\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":%s}}' \"$rel\" \"$msg\"; fi ;; esac; }",
+            "statusMessage": "Checking SEC-009 / boundary lint rules on edited file..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git push*)",
+            "command": "out=$(cd frontend && pnpm lint 2>&1 && npx tsc --noEmit 2>&1); code=$?; if [ $code -ne 0 ]; then reason=$(printf '%s' \"$out\" | tail -c 3000 | jq -Rs .); printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":%s}}' \"$reason\"; fi",
+            "statusMessage": "Running lint + typecheck before push (mirrors CI)..."
+          }
+        ]
+      }
+    ]
+  }
+}
