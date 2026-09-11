@@ -2,9 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Icon } from "./icon";
 import { Avatar, Badge, Breadcrumb, type BreadcrumbItemDef, Button, Kbd } from "./primitives";
-import { Command, type CommandGroup } from "./overlays";
+import { Command, DropdownMenu, type CommandGroup, type MenuItemDef } from "./overlays";
+import { useQAForge } from "./provider";
+import { authClient } from "@/lib/auth-client";
 import {
   Sidebar,
   SidebarContent,
@@ -42,6 +45,25 @@ export function AppSidebar({ activeId = "dashboard", counts = {}, workspace = { 
   workspace?: { name: string; plan?: string; onClick?: () => void };
   user?: { name: string; email?: string; onClick?: () => void };
 } & React.ComponentProps<typeof Sidebar>) {
+  const router = useRouter();
+  const { toast } = useQAForge();
+  const userMenuItems: MenuItemDef[] = [
+    { label: "Settings", icon: "Settings", onSelect: () => router.push("/settings") },
+    { type: "separator" },
+    {
+      label: "Log out",
+      icon: "LogOut",
+      destructive: true,
+      onSelect: async () => {
+        const { error } = await authClient.signOut();
+        if (error) {
+          toast({ title: "Couldn't sign out", description: "Please try again.", tone: "error" });
+          return;
+        }
+        router.push("/sign-in");
+      },
+    },
+  ];
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader className="flex-row items-center justify-between border-b border-sidebar-border px-3 py-0 h-(--topbar-height)">
@@ -79,14 +101,20 @@ export function AppSidebar({ activeId = "dashboard", counts = {}, workspace = { 
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" onClick={user.onClick}>
-              <Avatar name={user.name} size="sm" />
-              <span className="grid flex-1 text-left leading-tight">
-                <span className="truncate">{user.name}</span>
-                {user.email ? <span className="truncate text-xs text-sidebar-foreground/60">{user.email}</span> : null}
-              </span>
-              <Icon name="EllipsisVertical" size={14} className="text-sidebar-foreground/60" />
-            </SidebarMenuButton>
+            <DropdownMenu
+              align="end"
+              trigger={
+                <SidebarMenuButton size="lg" onClick={user.onClick}>
+                  <Avatar name={user.name} size="sm" />
+                  <span className="grid flex-1 text-left leading-tight">
+                    <span className="truncate">{user.name}</span>
+                    {user.email ? <span className="truncate text-xs text-sidebar-foreground/60">{user.email}</span> : null}
+                  </span>
+                  <Icon name="EllipsisVertical" size={14} className="text-sidebar-foreground/60" />
+                </SidebarMenuButton>
+              }
+              items={userMenuItems}
+            />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
