@@ -13,11 +13,12 @@ import type { FullRun } from "@/lib/repositories/test-run";
 // Badge/Card). Evidence content renders as plain text via ordinary JSX interpolation,
 // which is what Constitution Principle II actually requires anyway.
 //
-// Deliberately absent, per FR-006/007/008: no screenshot image, no live/in-progress
-// indicator, no agent-trace timeline, no "rerun" control — none of that data exists yet,
-// and none of it is fabricated here. D9/GitHub-Write-Path added the one exception: a link
-// to the real Approval draft, shown only for a FAIL/INCONCLUSIVE report (a PASS report
-// never gets an Approval row — approval.ts's own createApprovalDraftForCaller no-ops).
+// Deliberately absent, per FR-006/007/008: no live/in-progress indicator, no agent-trace
+// timeline, no "rerun" control — none of that data exists yet, and none of it is
+// fabricated here. D9/GitHub-Write-Path added the one exception: a link to the real
+// Approval draft, shown only for a FAIL/INCONCLUSIVE report (a PASS report never gets an
+// Approval row — approval.ts's own createApprovalDraftForCaller no-ops). Screenshot
+// evidence (SCREENSHOT type, base64 PNG) renders as an <img> in EvidenceGroup below.
 
 const RESULT_TONE = { PASS: "success", FAIL: "error", INCONCLUSIVE: "warning" } as const;
 
@@ -25,11 +26,16 @@ function EvidenceGroup({ type, items }: { type: FullRun["evidence"][number]["typ
   return (
     <Card title={type} titleSize="sm">
       <div className="flex flex-col gap-3">
-        {items.map((item) => (
-          <pre key={item.id} className="overflow-auto rounded-md border border-border bg-surface-1 p-3 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap">
-            {item.content}
-          </pre>
-        ))}
+        {items.map((item) =>
+          type === "SCREENSHOT" ? (
+            // eslint-disable-next-line @next/next/no-img-element -- base64 DB content, not a static/remote asset next/image can optimize
+            <img key={item.id} src={`data:image/png;base64,${item.content}`} alt="Step screenshot" className="rounded-md border border-border" />
+          ) : (
+            <pre key={item.id} className="overflow-auto rounded-md border border-border bg-surface-1 p-3 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap">
+              {item.content}
+            </pre>
+          ),
+        )}
       </div>
     </Card>
   );

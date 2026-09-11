@@ -16,7 +16,7 @@ export const ERROR_REASON_VALUES = [
 
 export const STEP_STATUS_VALUES = ["PENDING", "RUNNING", "PASSED", "FAILED"] as const;
 
-export const EVIDENCE_TYPE_VALUES = ["CONSOLE", "NETWORK", "DOM", "CODE", "HTTP"] as const;
+export const EVIDENCE_TYPE_VALUES = ["CONSOLE", "NETWORK", "DOM", "CODE", "HTTP", "SCREENSHOT"] as const;
 
 export const HYPOTHESIS_STATUS_VALUES = ["PROPOSED", "VALIDATING", "SUPPORTED", "REJECTED"] as const;
 

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."evidence_type" ADD VALUE 'SCREENSHOT';

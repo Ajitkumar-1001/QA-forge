@@ -182,6 +182,17 @@ export function createEvidenceTool(
         credentialValue: options.credentialValue,
       });
 
+      // ponytail: base64 PNG straight into the text column, same as every other evidence
+      // type here — swap for object storage + URL if row size ever becomes a problem.
+      const screenshot = await page.screenshot({ type: "png" });
+      evidence.push({
+        id: crypto.randomUUID(),
+        stepId,
+        type: "SCREENSHOT",
+        content: screenshot.toString("base64"),
+        metadata: { mimeType: "image/png" },
+      });
+
       evidence.push({
         id: crypto.randomUUID(),
         stepId,
