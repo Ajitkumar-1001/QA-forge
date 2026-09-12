@@ -368,6 +368,29 @@ describe("approveForCaller — guarded PENDING->APPROVED transition, the one ext
     expect(second).toEqual({ ok: true, githubIssueUrl: "https://github.com/owner/repo/issues/7" });
     expect(createGithubIssueMock).toHaveBeenCalledTimes(1);
   });
+
+  // 008-slack-linear-integrations (T029, SC-004): "the existing GitHub-issue-creation
+  // success rate is unchanged after this feature ships" — flagged with zero task coverage
+  // by /speckit-analyze until this task closed it. approveForCaller itself was never
+  // modified by this feature (only writeLinearIssueForApproval, a separate function called
+  // separately by the Server Action layer) — this test is the regression guard that keeps
+  // that true on purpose, not by accident.
+  it("SC-004: approveForCaller's own result and side effects for a caller with no Linear connection are identical to pre-feature behavior", async () => {
+    findExistingApprovalIssueMock.mockResolvedValue({ found: false });
+    createGithubIssueMock.mockResolvedValue({ ok: true, htmlUrl: "https://github.com/owner/repo/issues/9" });
+
+    const result = await approveForCaller("user-a", "run-a");
+
+    expect(result).toEqual({ ok: true, githubIssueUrl: "https://github.com/owner/repo/issues/9" });
+    expect(createLinearIssueMock).not.toHaveBeenCalled();
+    expect(findExistingLinearIssueMock).not.toHaveBeenCalled();
+
+    const row = await db.query.approval.findFirst({ where: (t, { eq: eqOp }) => eqOp(t.runId, "run-a") });
+    expect(row?.status).toBe("APPROVED");
+    expect(row?.githubIssueUrl).toBe("https://github.com/owner/repo/issues/9");
+    expect(row?.linearIssueUrl).toBeNull();
+    expect(row?.linearIssueError).toBeNull();
+  });
 });
 
 // 008-slack-linear-integrations (T019/T020/T021): the concurrency test here is not
