@@ -164,3 +164,55 @@ test.describe("D9/GitHub-Write-Path", () => {
     await context.close();
   });
 });
+
+// 008-slack-linear-integrations: quickstart.md Scenario 4. Note on what this can and can't
+// prove: Slack's notification path has zero UI-observable signal by design (fire-and-forget,
+// no user-facing notice per FR-013 — "recorded for operators only") — so unlike GitHub's
+// QAFORGE_E2E_FAKE_GITHUB_ISSUE_URL (whose result becomes a real link the UI renders),
+// QAFORGE_E2E_FAKE_SLACK_WEBHOOK's canned JSON response gives a Playwright test no way to
+// observe "was postSlackNotification called, and exactly once" — there's nothing rendered
+// to assert against. What IS genuinely e2e-observable, and what these two tests prove: a
+// drafted decision's own behavior (content, ability to approve/reject) is byte-identical
+// whether or not Slack is connected (US1 AS2) — proving Slack's presence never changes what
+// the user sees. Proving "exactly one HTTP POST fired" needs either a real webhook target
+// (out of scope for CI) or a smarter seam (e.g. one that appends to a file this test reads)
+// — flagged here as a real gap, not silently treated as covered by these two tests.
+test.describe("008-slack-linear-integrations — Slack notification does not alter the drafting/approval flow (FR-007/FR-008)", () => {
+  test("with Slack connected, a drafted decision's content and approve flow are unchanged", async ({ browser }) => {
+    const context = await browser.newContext();
+    const { userId } = await signInAs(context, BASE_URL);
+
+    const page = await context.newPage();
+    await page.goto("/settings");
+    await page.locator("#pat").fill("ghp_fake_for_slack_notify_e2e");
+    await page.locator("form").filter({ has: page.locator("#pat") }).getByRole("button", { name: "Connect" }).click();
+    await page.locator("#webhookUrl").fill("https://hooks.slack.com/services/T00/B00/xxx");
+    await page.locator("form").filter({ has: page.locator("#webhookUrl") }).getByRole("button", { name: "Connect" }).click();
+    await expect(page.getByRole("button", { name: "Disconnect" }).first()).toBeVisible();
+
+    const runId = await seedFailedRunWithApproval(userId, "qa-forge/approval-e2e-slack-connected");
+    await page.goto(`/runs/${runId}/approval`);
+    await expect(page.getByText("The homepage 500s on load").first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Approve & Create" }).click();
+    await page.getByRole("button", { name: "Create Issue" }).click();
+    await expect(page.getByText("Approved and created")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open on GitHub" })).toHaveAttribute("href", FAKE_ISSUE_URL);
+
+    await context.close();
+  });
+
+  test("with no Slack connection, the same drafting/approve flow behaves identically (US1 AS2)", async ({ browser }) => {
+    const context = await browser.newContext();
+    const { userId } = await signInAs(context, BASE_URL);
+    const runId = await seedFailedRunWithApproval(userId, "qa-forge/approval-e2e-no-slack");
+
+    const page = await context.newPage();
+    await page.goto(`/runs/${runId}/approval`);
+    await expect(page.getByText("The homepage 500s on load").first()).toBeVisible();
+    await page.getByRole("button", { name: "Reject" }).click();
+    await expect(page.getByText("Request rejected")).toBeVisible();
+
+    await context.close();
+  });
+});

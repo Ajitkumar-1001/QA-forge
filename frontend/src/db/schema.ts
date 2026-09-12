@@ -106,6 +106,8 @@ export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
   githubConnection: many(githubConnection),
+  slackConnection: many(slackConnection),
+  linearConnection: many(linearConnection),
   projects: many(project),
 }));
 
@@ -144,6 +146,54 @@ export const githubConnectionRelations = relations(githubConnection, ({ one }) =
 }));
 
 export type GithubConnection = typeof githubConnection.$inferSelect;
+
+// --- 008-slack-linear-integrations ---
+// Exact mirrors of github_connection's shape (data-model.md; research.md Decision 6: three
+// explicit mirrors, not one polymorphic table). Linear carries two extra columns (team_id,
+// team_name) resolved at connect time — see research.md Decision 7's two-step connect flow.
+export const slackConnection = pgTable("slack_connection", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+
+  webhookUrlReference: text("webhook_url_reference").notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const slackConnectionRelations = relations(slackConnection, ({ one }) => ({
+  user: one(user, {
+    fields: [slackConnection.userId],
+    references: [user.id],
+  }),
+}));
+
+export type SlackConnection = typeof slackConnection.$inferSelect;
+
+export const linearConnection = pgTable("linear_connection", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+
+  apiKeyReference: text("api_key_reference").notNull(),
+  teamId: text("team_id").notNull(),
+  teamName: text("team_name").notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const linearConnectionRelations = relations(linearConnection, ({ one }) => ({
+  user: one(user, {
+    fields: [linearConnection.userId],
+    references: [user.id],
+  }),
+}));
+
+export type LinearConnection = typeof linearConnection.$inferSelect;
 
 // --- 003-durable-run-persistence ---
 // Ownership chain: user -> project -> test_scenario -> test_run -> (test_step, evidence,
@@ -359,6 +409,11 @@ export const approval = pgTable(
     draftTitle: text("draft_title").notNull(),
     draftBody: text("draft_body").notNull(),
     githubIssueUrl: text("github_issue_url"),
+    // 008-slack-linear-integrations: parity with githubIssueUrl (data-model.md). No column
+    // stores a Linear marker — like GitHub's, it's derived deterministically from this row's
+    // own id at read time, never stored.
+    linearIssueUrl: text("linear_issue_url"),
+    linearIssueError: text("linear_issue_error"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     decidedAt: timestamp("decided_at"),
     // set null (not cascade) on user deletion: an already-decided Approval's history

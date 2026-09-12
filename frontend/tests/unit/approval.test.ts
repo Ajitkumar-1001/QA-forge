@@ -26,6 +26,21 @@ vi.mock("@/lib/github-api", () => ({
   findExistingApprovalIssue: (...args: unknown[]) => findExistingApprovalIssueMock(...args),
 }));
 
+// 008-slack-linear-integrations: postSlackNotification is the one external call
+// notifySlackForApproval makes — mocked the same way github-api's calls already are.
+// approval.ts imports only postSlackNotification from this module, so that's all this needs.
+const postSlackNotificationMock = vi.fn();
+vi.mock("@/lib/slack-api", () => ({
+  postSlackNotification: (...args: unknown[]) => postSlackNotificationMock(...args),
+}));
+
+const createLinearIssueMock = vi.fn();
+const findExistingLinearIssueMock = vi.fn();
+vi.mock("@/lib/linear-api", () => ({
+  createLinearIssue: (...args: unknown[]) => createLinearIssueMock(...args),
+  findExistingLinearIssue: (...args: unknown[]) => findExistingLinearIssueMock(...args),
+}));
+
 let db: typeof import("@/db/client").db;
 let schema: typeof import("@/db/schema");
 let buildApprovalDraft: typeof import("@/lib/approval-draft").buildApprovalDraft;
@@ -34,6 +49,9 @@ let getApprovalForCaller: typeof import("@/lib/repositories/approval").getApprov
 let approveForCaller: typeof import("@/lib/repositories/approval").approveForCaller;
 let rejectForCaller: typeof import("@/lib/repositories/approval").rejectForCaller;
 let upsertGithubConnectionForCaller: typeof import("@/lib/repositories/github-connection").upsertGithubConnectionForCaller;
+let upsertSlackConnectionForCaller: typeof import("@/lib/repositories/slack-connection").upsertSlackConnectionForCaller;
+let upsertLinearConnectionForCaller: typeof import("@/lib/repositories/linear-connection").upsertLinearConnectionForCaller;
+let writeLinearIssueForApproval: typeof import("@/lib/repositories/approval").writeLinearIssueForApproval;
 
 const RUN_INFO = { objective: "load the homepage", repository: "owner/repo", applicationUrl: "https://example.com" };
 
@@ -57,18 +75,25 @@ beforeEach(async () => {
   ({ db } = await import("@/db/client"));
   schema = await import("@/db/schema");
   ({ buildApprovalDraft } = await import("@/lib/approval-draft"));
-  ({ createApprovalDraftForCaller, getApprovalForCaller, approveForCaller, rejectForCaller } = await import(
+  ({ createApprovalDraftForCaller, getApprovalForCaller, approveForCaller, rejectForCaller, writeLinearIssueForApproval } = await import(
     "@/lib/repositories/approval"
   ));
   ({ upsertGithubConnectionForCaller } = await import("@/lib/repositories/github-connection"));
+  ({ upsertSlackConnectionForCaller } = await import("@/lib/repositories/slack-connection"));
+  ({ upsertLinearConnectionForCaller } = await import("@/lib/repositories/linear-connection"));
   createGithubIssueMock.mockReset();
   findExistingApprovalIssueMock.mockReset();
+  postSlackNotificationMock.mockReset();
+  createLinearIssueMock.mockReset();
+  findExistingLinearIssueMock.mockReset();
 
   await db.delete(schema.approval);
   await db.delete(schema.testRun);
   await db.delete(schema.testScenario);
   await db.delete(schema.project);
   await db.delete(schema.githubConnection);
+  await db.delete(schema.slackConnection);
+  await db.delete(schema.linearConnection);
   await db.delete(schema.account);
   await db.delete(schema.session);
   await db.delete(schema.user);
@@ -123,6 +148,76 @@ describe("createApprovalDraftForCaller — draft creation right after a persiste
   it("no-ops (creates nothing) when the caller doesn't own the run", async () => {
     await createApprovalDraftForCaller("user-b", "run-a", RUN_INFO, failReport());
     expect(await db.query.approval.findFirst()).toBeUndefined();
+  });
+
+  // 008-slack-linear-integrations (T009): after() throws E468 outside a real Next.js
+  // request, so in this Vitest environment createApprovalDraftForCaller always takes the
+  // fallback branch and awaits notifySlackForApproval directly (see approval.ts's comment).
+  // That means the "zero added latency" half of FR-008 is NOT unit-testable here — it's a
+  // property of after() itself, only observable in a real request (an e2e concern, T012).
+  // What IS unit-testable, and is tested below: a Slack failure never prevents/alters the
+  // Approval row, and the failure log never contains the webhook URL (FR-008, FR-015).
+  describe("Slack notification (FR-007/FR-008/FR-015)", () => {
+    beforeEach(async () => {
+      await upsertGithubConnectionForCaller("user-a", { pat: "ghp_fake", scopes: "contents:read,issues:write" });
+    });
+
+    it("posts exactly once when both GitHub and Slack are connected", async () => {
+      await upsertSlackConnectionForCaller("user-a", { webhookUrl: "https://hooks.slack.com/services/T00/B00/xxx" });
+      postSlackNotificationMock.mockResolvedValue({ ok: true });
+
+      await createApprovalDraftForCaller("user-a", "run-a", RUN_INFO, failReport());
+      expect(postSlackNotificationMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("never posts when the caller has no Slack connection", async () => {
+      await createApprovalDraftForCaller("user-a", "run-a", RUN_INFO, failReport());
+      expect(postSlackNotificationMock).not.toHaveBeenCalled();
+    });
+
+    it("never posts when Slack is connected but GitHub is not (FR-019 suspend behavior) — no-ops exactly like no connection at all", async () => {
+      await upsertSlackConnectionForCaller("user-b", { webhookUrl: "https://hooks.slack.com/services/T00/B00/xxx" });
+      await db.insert(schema.project).values({ id: "project-b", userId: "user-b", applicationUrl: RUN_INFO.applicationUrl, repository: RUN_INFO.repository });
+      await db.insert(schema.testScenario).values({ id: "scenario-b", projectId: "project-b", objective: RUN_INFO.objective });
+      await db.insert(schema.testRun).values({ id: "run-b", scenarioId: "scenario-b", idempotencyKey: "k2", status: "FAILED", completedAt: new Date() });
+
+      await createApprovalDraftForCaller("user-b", "run-b", RUN_INFO, failReport());
+      expect(postSlackNotificationMock).not.toHaveBeenCalled();
+    });
+
+    it("a Slack failure never prevents the Approval row from being created", async () => {
+      await upsertSlackConnectionForCaller("user-a", { webhookUrl: "https://hooks.slack.com/services/T00/B00/xxx" });
+      postSlackNotificationMock.mockResolvedValue({ ok: false, reason: "SLACK_UNREACHABLE" });
+
+      await createApprovalDraftForCaller("user-a", "run-a", RUN_INFO, failReport());
+      const row = await db.query.approval.findFirst({ where: (t, { eq: eqOp }) => eqOp(t.runId, "run-a") });
+      expect(row?.status).toBe("PENDING");
+    });
+
+    it("a Slack failure is logged without ever including the webhook URL (Constitution Principle IV)", async () => {
+      await upsertSlackConnectionForCaller("user-a", { webhookUrl: "https://hooks.slack.com/services/T00/B00/super-secret-path" });
+      postSlackNotificationMock.mockResolvedValue({ ok: false, reason: "SLACK_REJECTED" });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await createApprovalDraftForCaller("user-a", "run-a", RUN_INFO, failReport());
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const loggedArgs = errorSpy.mock.calls[0];
+      expect(JSON.stringify(loggedArgs)).not.toContain("super-secret-path");
+      expect(JSON.stringify(loggedArgs)).not.toContain("https://hooks.slack.com");
+      errorSpy.mockRestore();
+    });
+
+    it("a successful Slack post logs nothing", async () => {
+      await upsertSlackConnectionForCaller("user-a", { webhookUrl: "https://hooks.slack.com/services/T00/B00/xxx" });
+      postSlackNotificationMock.mockResolvedValue({ ok: true });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await createApprovalDraftForCaller("user-a", "run-a", RUN_INFO, failReport());
+
+      expect(errorSpy).not.toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
   });
 });
 

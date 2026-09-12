@@ -2,6 +2,7 @@ import { Icon } from "../icon";
 import { Card, PageHeader } from "../domain";
 import { Field } from "../forms";
 import { GithubConnectionRow, type GithubConnectionData } from "../settings/github-connection-row";
+import { SlackConnectionRow, type SlackConnectionData } from "../settings/slack-connection-row";
 
 // Test Plans / Repositories / Environments / Agent Activity screens that used to live in
 // this file were deleted: no PRD backing, no DB table for any of them (Test Plans/
@@ -13,13 +14,24 @@ import { GithubConnectionRow, type GithubConnectionData } from "../settings/gith
 // real. GitHub (007-github-connection) is the only real integration, so it's the only
 // section left — no client state remains, so this is a plain Server Component again
 // (GithubConnectionRow is its own "use client" leaf).
-export function SettingsScreen({ githubConnection }: { githubConnection: GithubConnectionData }) {
+export function SettingsScreen({
+  githubConnection,
+  slackConnection,
+}: {
+  githubConnection: GithubConnectionData;
+  slackConnection: SlackConnectionData;
+}) {
   return (
     <div className="qf-page" style={{ maxWidth: 860 }}>
-      <PageHeader title="Settings" description="GitHub connection for repository access." />
+      <PageHeader title="Settings" description="GitHub connection for repository access. Slack and Linear both require GitHub connected first." />
       <Card padding="large">
         <Field label={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Icon name="Github" size={16} />GitHub</span>}>
           <GithubConnectionRow data={githubConnection} />
+        </Field>
+      </Card>
+      <Card padding="large">
+        <Field label={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Icon name="Bell" size={16} />Slack</span>}>
+          <SlackConnectionRow data={slackConnection} githubConnected={githubConnection.connected} />
         </Field>
       </Card>
     </div>

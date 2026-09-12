@@ -3,9 +3,11 @@ import { redirect } from "next/navigation";
 import dynamic from "next/dynamic";
 import { getCallerId } from "@/lib/auth";
 import { getGithubConnectionForCaller } from "@/lib/repositories/github-connection";
+import { getSlackConnectionForCaller } from "@/lib/repositories/slack-connection";
 import { decrypt } from "@/lib/crypto";
 import { verifyAndListGithubRepositories } from "@/lib/github-api";
 import type { GithubConnectionData } from "@/components/qaforge/settings/github-connection-row";
+import type { SlackConnectionData } from "@/components/qaforge/settings/slack-connection-row";
 
 const SettingsScreen = dynamic(() => import("@/components/qaforge/screens/workspace").then(mod => mod.SettingsScreen), {
 
@@ -31,5 +33,12 @@ export default async function Page() {
     githubConnection = { connected: true, repositories: verified.ok ? verified.repositories : null };
   }
 
-  return <SettingsScreen githubConnection={githubConnection} />;
+  // 008-slack-linear-integrations: fetched alongside GitHub's, plain repository call —
+  // matches this page's own existing pattern, not github-connection-service.ts's Safely-
+  // wrapped/audit-logged variant (that wrapper has no callers anywhere in src/ today; this
+  // page never used it for GitHub either, so Slack/Linear don't introduce an inconsistency).
+  const slackConnectionRow = await getSlackConnectionForCaller(callerId);
+  const slackConnection: SlackConnectionData = { connected: slackConnectionRow !== null };
+
+  return <SettingsScreen githubConnection={githubConnection} slackConnection={slackConnection} />;
 }

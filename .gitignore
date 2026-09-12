@@ -6,3 +6,5 @@ vault-qa/
 diagrams/
 node_modules/
 docs/
+
+*.txt
