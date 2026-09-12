@@ -81,18 +81,17 @@ function failReport() {
 
 test.describe("US1 — own run history (quickstart Scenario 1, 6)", () => {
   test("a signed-in user sees only their own real runs, another user's are absent", async ({ browser }) => {
+    // Random per-run identities (defaultProfile(), same as every other test in this file) —
+    // NOT the fixed e2e-a/e2e-b emails this used to hardcode: those never reach a terminal
+    // status here, so a fixed, reused identity accumulates one more permanently-PLANNING
+    // run every time this test runs, eventually tripping 006-run-concurrency-cap's real
+    // 5-run limit on its own fixture data (found by running this suite repeatedly).
     const contextA = await browser.newContext();
-    const { userId: userA } = await signInAs(contextA, BASE_URL, {
-      user: { name: "User A", email: "e2e-a@example.com", image: "https://example.com/a.png", emailVerified: true },
-      data: { id: "gh-e2e-a", login: "e2e-a" },
-    });
+    const { userId: userA } = await signInAs(contextA, BASE_URL);
     const runA = await seedRun(userA, { objective: "user A's objective" });
 
     const contextB = await browser.newContext();
-    const { userId: userB } = await signInAs(contextB, BASE_URL, {
-      user: { name: "User B", email: "e2e-b@example.com", image: "https://example.com/b.png", emailVerified: true },
-      data: { id: "gh-e2e-b", login: "e2e-b" },
-    });
+    const { userId: userB } = await signInAs(contextB, BASE_URL);
     await seedRun(userB, { objective: "user B's unrelated objective" });
 
     const pageA = await contextA.newPage();

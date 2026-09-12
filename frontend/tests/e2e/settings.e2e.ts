@@ -21,14 +21,12 @@ test.describe("007-github-connection", () => {
     const page = await context.newPage();
 
     await page.goto("/settings");
-    await page.getByRole("tab", { name: "Integrations" }).click();
+    // No tab click: the Workspace/Notifications tabs and the mock Slack/Linear rows were
+    // removed (no PRD backing) — GitHub is the only section on the page now.
     await page.locator("#pat").fill("ghp_fake_token_for_settings_e2e");
-    // "Connect" also appears on the still-mock Linear row — scope to the actual form.
     await page.locator("form").filter({ has: page.locator("#pat") }).getByRole("button", { name: "Connect" }).click();
 
-    // The action re-renders the same page with the connection now established. "Connected"
-    // alone is ambiguous — the still-mock Slack row also says it — so check for the
-    // Disconnect button, unique to the real GitHub connected state.
+    // The action re-renders the same page with the connection now established.
     await expect(page.getByRole("button", { name: "Disconnect" })).toBeVisible();
     await expect(page.getByText("qa-forge/settings-e2e-repo")).toBeVisible();
 

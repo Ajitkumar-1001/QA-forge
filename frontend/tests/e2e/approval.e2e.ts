@@ -127,7 +127,8 @@ test.describe("D9/GitHub-Write-Path", () => {
     // own .env.local value — a real key mismatch, found by running this exact test.
     const page = await context.newPage();
     await page.goto("/settings");
-    await page.getByRole("tab", { name: "Integrations" }).click();
+    // No tab click: the Workspace/Notifications tabs were removed (no PRD backing) —
+    // GitHub is the only section on the page now.
     await page.locator("#pat").fill("ghp_fake_for_approval_e2e");
     await page.locator("form").filter({ has: page.locator("#pat") }).getByRole("button", { name: "Connect" }).click();
     await expect(page.getByRole("button", { name: "Disconnect" })).toBeVisible();
