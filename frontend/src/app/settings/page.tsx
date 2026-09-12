@@ -4,10 +4,12 @@ import dynamic from "next/dynamic";
 import { getCallerId } from "@/lib/auth";
 import { getGithubConnectionForCaller } from "@/lib/repositories/github-connection";
 import { getSlackConnectionForCaller } from "@/lib/repositories/slack-connection";
+import { getLinearConnectionForCaller } from "@/lib/repositories/linear-connection";
 import { decrypt } from "@/lib/crypto";
 import { verifyAndListGithubRepositories } from "@/lib/github-api";
 import type { GithubConnectionData } from "@/components/qaforge/settings/github-connection-row";
 import type { SlackConnectionData } from "@/components/qaforge/settings/slack-connection-row";
+import type { LinearConnectionData } from "@/components/qaforge/settings/linear-connection-row";
 
 const SettingsScreen = dynamic(() => import("@/components/qaforge/screens/workspace").then(mod => mod.SettingsScreen), {
 
@@ -40,5 +42,10 @@ export default async function Page() {
   const slackConnectionRow = await getSlackConnectionForCaller(callerId);
   const slackConnection: SlackConnectionData = { connected: slackConnectionRow !== null };
 
-  return <SettingsScreen githubConnection={githubConnection} slackConnection={slackConnection} />;
+  const linearConnectionRow = await getLinearConnectionForCaller(callerId);
+  const linearConnection: LinearConnectionData = linearConnectionRow
+    ? { connected: true, teamName: linearConnectionRow.teamName }
+    : { connected: false };
+
+  return <SettingsScreen githubConnection={githubConnection} slackConnection={slackConnection} linearConnection={linearConnection} />;
 }

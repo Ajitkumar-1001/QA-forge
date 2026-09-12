@@ -273,7 +273,13 @@ export async function rejectForCaller(callerId: string, runId: string): Promise<
 
 type LinearWriteResult =
   | { ok: true; linearIssueUrl: string }
-  | { ok: false; reason: "not_found_or_not_owned" | "NOT_APPROVED" | "NO_LINEAR_CONNECTION" | "NO_GITHUB_CONNECTION" | "ISSUE_CREATION_FAILED" };
+  | { ok: false; reason: "not_found_or_not_owned" | "NOT_APPROVED" | "NO_LINEAR_CONNECTION" | "NO_GITHUB_CONNECTION" }
+  // FR-013 requires recoverable ("timeout"-shaped) vs non-recoverable ("invalid credential")
+  // to be distinguished specifically for Linear (unlike GitHub's single collapsed
+  // ISSUE_CREATION_FAILED bucket) — underlyingReason carries what data-model.md's original
+  // signature collapsed away; found while wiring T020, since a caller can't surface FR-013's
+  // distinction from a reason string that's always the same value.
+  | { ok: false; reason: "ISSUE_CREATION_FAILED"; underlyingReason: "INVALID_KEY" | "LINEAR_UNREACHABLE" };
 
 /**
  * 008-slack-linear-integrations: own transaction, sequenced after — never nested inside —
@@ -359,7 +365,7 @@ export async function writeLinearIssueForApproval(callerId: string, runId: strin
       const created = await createLinearIssue(apiKey, linearRow.teamId, locked.draft_title, locked.draft_body);
       if (!created.ok) {
         await tx.update(approval).set({ linearIssueError: created.reason }).where(eq(approval.id, locked.id));
-        return { ok: false, reason: "ISSUE_CREATION_FAILED" };
+        return { ok: false, reason: "ISSUE_CREATION_FAILED", underlyingReason: created.reason };
       }
       issueUrl = created.issueUrl;
     } else {
@@ -367,7 +373,7 @@ export async function writeLinearIssueForApproval(callerId: string, runId: strin
       // exists, so this is the same failure bucket as a failed write, not license to create
       // blindly (identical reasoning to findExistingApprovalIssue's own null-reason branch).
       await tx.update(approval).set({ linearIssueError: existing.reason }).where(eq(approval.id, locked.id));
-      return { ok: false, reason: "ISSUE_CREATION_FAILED" };
+      return { ok: false, reason: "ISSUE_CREATION_FAILED", underlyingReason: existing.reason };
     }
 
     await tx.update(approval).set({ linearIssueUrl: issueUrl, linearIssueError: null }).where(eq(approval.id, locked.id));

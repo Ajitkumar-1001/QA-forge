@@ -57,11 +57,29 @@ async function postGraphql(
   return { ok: true, data: body.data };
 }
 
+// FR-013: non-recoverable (invalid/revoked credential) distinguished from recoverable
+// (timeout/unreachable). Lives here, not in the "use server" actions file, so both the
+// ephemeral action-response banner and approval-view.tsx's persisted-state render (reading
+// the stored linear_issue_error column) share one copy of this mapping — "use server" files
+// may only export async functions, so this plain one couldn't live there anyway.
+export function linearNoticeForFailure(underlyingReason: "INVALID_KEY" | "LINEAR_UNREACHABLE"): { message: string; retryable: boolean } {
+  if (underlyingReason === "INVALID_KEY") {
+    return { message: "Linear issue could not be created — your Linear key looks invalid or revoked. Reconnect in Settings.", retryable: false };
+  }
+  return { message: "Linear issue could not be created — Linear didn't respond in time.", retryable: true };
+}
+
 export type LinearApiResult =
   | { ok: true; teams: { id: string; name: string }[] }
   | { ok: false; reason: "INVALID_KEY" | "LINEAR_UNREACHABLE" };
 
 export async function verifyAndListLinearTeams(apiKey: string): Promise<LinearApiResult> {
+  // e2e-only test seam (tests/e2e/settings.e2e.ts, approval.e2e.ts) — same pattern as
+  // QAFORGE_E2E_FAKE_GITHUB_API in github-api.ts.
+  if (process.env.QAFORGE_E2E_FAKE_LINEAR_API) {
+    return JSON.parse(process.env.QAFORGE_E2E_FAKE_LINEAR_API) as LinearApiResult;
+  }
+
   const result = await postGraphql(apiKey, "query { teams { nodes { id name } } }", {});
   if (!result.ok) return result;
 
@@ -75,6 +93,11 @@ export async function createLinearIssue(
   title: string,
   body: string,
 ): Promise<{ ok: true; issueUrl: string } | { ok: false; reason: "INVALID_KEY" | "LINEAR_UNREACHABLE" }> {
+  // e2e-only test seam, same pattern as QAFORGE_E2E_FAKE_GITHUB_ISSUE_URL in github-api.ts.
+  if (process.env.QAFORGE_E2E_FAKE_LINEAR_ISSUE_URL) {
+    return { ok: true, issueUrl: process.env.QAFORGE_E2E_FAKE_LINEAR_ISSUE_URL };
+  }
+
   const mutation = `
     mutation($teamId: String!, $title: String!, $description: String!) {
       issueCreate(input: { teamId: $teamId, title: $title, description: $description }) {
@@ -103,6 +126,13 @@ export async function findExistingLinearIssue(
   teamId: string,
   marker: string,
 ): Promise<{ found: true; issueUrl: string } | { found: false } | { found: null; reason: "INVALID_KEY" | "LINEAR_UNREACHABLE" }> {
+  // e2e-only test seam — matches findExistingApprovalIssue's own precedent: under the fake
+  // issue-url seam, the real duplicate-search isn't needed, so this short-circuits to
+  // found:false rather than making a real call.
+  if (process.env.QAFORGE_E2E_FAKE_LINEAR_ISSUE_URL) {
+    return { found: false };
+  }
+
   const query = `
     query($teamId: ID!, $marker: String!) {
       issues(first: 100, orderBy: createdAt, filter: { team: { id: { eq: $teamId } }, description: { contains: $marker } }) {

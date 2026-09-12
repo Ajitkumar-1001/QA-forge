@@ -4,7 +4,7 @@ import * as React from "react";
 import { useActionState } from "react";
 import { Button } from "../primitives";
 import { AlertDialog } from "../overlays";
-import { approveApprovalAction, rejectApprovalAction, type ApprovalActionState } from "@/app/runs/[runId]/approval/actions";
+import { approveApprovalAction, rejectApprovalAction, retryLinearIssueAction, type ApprovalActionState } from "@/app/runs/[runId]/approval/actions";
 
 const initialState: ApprovalActionState = { error: null };
 
@@ -56,5 +56,26 @@ export function ApprovalActions({ runId }: { runId: string }) {
         }}
       />
     </div>
+  );
+}
+
+/**
+ * 008-slack-linear-integrations: renders only for an already-APPROVED decision whose Linear
+ * write failed (approval-view.tsx decides that, same "server component decides the state"
+ * split as ApprovalActions above). retryLinearIssueAction is safe to call unconditionally —
+ * FR-010 [spec]'s stored-linearIssueUrl fast-path means a retry after a fixed connection
+ * just succeeds, and a retry with the same broken connection just fails the same way again.
+ */
+export function RetryLinearButton({ runId }: { runId: string }) {
+  const [state, retryAction, pending] = useActionState(retryLinearIssueAction, initialState);
+
+  return (
+    <form action={retryAction} className="flex flex-col gap-1">
+      <input type="hidden" name="runId" value={runId} />
+      <Button type="submit" variant="outline" size="sm" icon="RefreshCw" loading={pending} disabled={pending}>
+        Retry Linear
+      </Button>
+      {state.error ? <span className="text-xs text-destructive" role="alert">{state.error}</span> : null}
+    </form>
   );
 }

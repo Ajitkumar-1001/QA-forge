@@ -370,6 +370,105 @@ describe("approveForCaller — guarded PENDING->APPROVED transition, the one ext
   });
 });
 
+// 008-slack-linear-integrations (T019/T020/T021): the concurrency test here is not
+// optional per this feature's own history — a follow-up PRD review found the exact race
+// this test guards once already, after an earlier fix had already "closed" it.
+describe("writeLinearIssueForApproval — own transaction, own FOR UPDATE lock (Decision Log #4/#8)", () => {
+  beforeEach(async () => {
+    await upsertGithubConnectionForCaller("user-a", { pat: "ghp_fake", scopes: "contents:read,issues:write" });
+    createGithubIssueMock.mockResolvedValue({ ok: true, htmlUrl: "https://github.com/owner/repo/issues/1" });
+    findExistingApprovalIssueMock.mockResolvedValue({ found: false });
+    await createApprovalDraftForCaller("user-a", "run-a", RUN_INFO, failReport());
+    await approveForCaller("user-a", "run-a"); // now APPROVED — the precondition writeLinearIssueForApproval requires
+  });
+
+  it("returns NOT_APPROVED for a still-PENDING decision — closes the path a replayed retry could otherwise exploit (Constitution Principle V/FR-016)", async () => {
+    await db.insert(schema.testRun).values({ id: "run-b", scenarioId: "scenario-a", idempotencyKey: "k2", status: "FAILED", completedAt: new Date() });
+    await createApprovalDraftForCaller("user-a", "run-b", RUN_INFO, failReport()); // never approved
+    await upsertLinearConnectionForCaller("user-a", { apiKey: "lin_key", teamId: "team-1", teamName: "Eng" });
+
+    const result = await writeLinearIssueForApproval("user-a", "run-b");
+    expect(result).toEqual({ ok: false, reason: "NOT_APPROVED" });
+    expect(createLinearIssueMock).not.toHaveBeenCalled();
+  });
+
+  it("returns NO_LINEAR_CONNECTION when the caller has none", async () => {
+    const result = await writeLinearIssueForApproval("user-a", "run-a");
+    expect(result).toEqual({ ok: false, reason: "NO_LINEAR_CONNECTION" });
+  });
+
+  it("returns NO_GITHUB_CONNECTION when GitHub was disconnected after approval (FR-019 suspend behavior)", async () => {
+    await upsertLinearConnectionForCaller("user-a", { apiKey: "lin_key", teamId: "team-1", teamName: "Eng" });
+    await db.delete(schema.githubConnection).where(eq(schema.githubConnection.userId, "user-a"));
+
+    const result = await writeLinearIssueForApproval("user-a", "run-a");
+    expect(result).toEqual({ ok: false, reason: "NO_GITHUB_CONNECTION" });
+    expect(createLinearIssueMock).not.toHaveBeenCalled();
+  });
+
+  it("idempotency check (a): a stored linearIssueUrl is returned without any new Linear call", async () => {
+    await upsertLinearConnectionForCaller("user-a", { apiKey: "lin_key", teamId: "team-1", teamName: "Eng" });
+    await db.update(schema.approval).set({ linearIssueUrl: "https://linear.app/team/issue/ENG-1" }).where(eq(schema.approval.runId, "run-a"));
+
+    const result = await writeLinearIssueForApproval("user-a", "run-a");
+    expect(result).toEqual({ ok: true, linearIssueUrl: "https://linear.app/team/issue/ENG-1" });
+    expect(findExistingLinearIssueMock).not.toHaveBeenCalled();
+    expect(createLinearIssueMock).not.toHaveBeenCalled();
+  });
+
+  it("idempotency check (b): the write-succeeded-but-persist-failed case is recovered via marker-search, not re-created", async () => {
+    await upsertLinearConnectionForCaller("user-a", { apiKey: "lin_key", teamId: "team-1", teamName: "Eng" });
+    findExistingLinearIssueMock.mockResolvedValue({ found: true, issueUrl: "https://linear.app/team/issue/ENG-2" });
+
+    const result = await writeLinearIssueForApproval("user-a", "run-a");
+    expect(result).toEqual({ ok: true, linearIssueUrl: "https://linear.app/team/issue/ENG-2" });
+    expect(createLinearIssueMock).not.toHaveBeenCalled();
+
+    const row = await db.query.approval.findFirst({ where: (t, { eq: eqOp }) => eqOp(t.runId, "run-a") });
+    expect(row?.linearIssueUrl).toBe("https://linear.app/team/issue/ENG-2");
+  });
+
+  it("neither idempotency check finds anything — creates a new issue and persists it", async () => {
+    await upsertLinearConnectionForCaller("user-a", { apiKey: "lin_key", teamId: "team-1", teamName: "Eng" });
+    findExistingLinearIssueMock.mockResolvedValue({ found: false });
+    createLinearIssueMock.mockResolvedValue({ ok: true, issueUrl: "https://linear.app/team/issue/ENG-3" });
+
+    const result = await writeLinearIssueForApproval("user-a", "run-a");
+    expect(result).toEqual({ ok: true, linearIssueUrl: "https://linear.app/team/issue/ENG-3" });
+    expect(createLinearIssueMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a creation failure records linear_issue_error, leaves linear_issue_url null, and never touches the already-APPROVED status or the GitHub issue (FR-011)", async () => {
+    await upsertLinearConnectionForCaller("user-a", { apiKey: "lin_key", teamId: "team-1", teamName: "Eng" });
+    findExistingLinearIssueMock.mockResolvedValue({ found: false });
+    createLinearIssueMock.mockResolvedValue({ ok: false, reason: "LINEAR_UNREACHABLE" });
+
+    const result = await writeLinearIssueForApproval("user-a", "run-a");
+    expect(result).toEqual({ ok: false, reason: "ISSUE_CREATION_FAILED", underlyingReason: "LINEAR_UNREACHABLE" });
+
+    const row = await db.query.approval.findFirst({ where: (t, { eq: eqOp }) => eqOp(t.runId, "run-a") });
+    expect(row?.status).toBe("APPROVED");
+    expect(row?.githubIssueUrl).toBe("https://github.com/owner/repo/issues/1");
+    expect(row?.linearIssueUrl).toBeNull();
+    expect(row?.linearIssueError).toBe("LINEAR_UNREACHABLE");
+  });
+
+  it("exactly one Linear issue is created for two simultaneous writeLinearIssueForApproval calls on the same decision — the exact regression a follow-up PRD review found and fixed once already", async () => {
+    await upsertLinearConnectionForCaller("user-a", { apiKey: "lin_key", teamId: "team-1", teamName: "Eng" });
+    findExistingLinearIssueMock.mockResolvedValue({ found: false });
+    createLinearIssueMock.mockResolvedValue({ ok: true, issueUrl: "https://linear.app/team/issue/ENG-7" });
+
+    const [first, second] = await Promise.all([
+      writeLinearIssueForApproval("user-a", "run-a"),
+      writeLinearIssueForApproval("user-a", "run-a"),
+    ]);
+
+    expect(first).toEqual({ ok: true, linearIssueUrl: "https://linear.app/team/issue/ENG-7" });
+    expect(second).toEqual({ ok: true, linearIssueUrl: "https://linear.app/team/issue/ENG-7" });
+    expect(createLinearIssueMock).toHaveBeenCalledTimes(1); // the FOR UPDATE lock, not luck
+  });
+});
+
 describe("rejectForCaller — plain ownership-checked PENDING->REJECTED, no GitHub call ever", () => {
   beforeEach(async () => {
     await createApprovalDraftForCaller("user-a", "run-a", RUN_INFO, failReport());

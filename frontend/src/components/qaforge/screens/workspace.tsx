@@ -3,6 +3,7 @@ import { Card, PageHeader } from "../domain";
 import { Field } from "../forms";
 import { GithubConnectionRow, type GithubConnectionData } from "../settings/github-connection-row";
 import { SlackConnectionRow, type SlackConnectionData } from "../settings/slack-connection-row";
+import { LinearConnectionRow, type LinearConnectionData } from "../settings/linear-connection-row";
 
 // Test Plans / Repositories / Environments / Agent Activity screens that used to live in
 // this file were deleted: no PRD backing, no DB table for any of them (Test Plans/
@@ -17,9 +18,11 @@ import { SlackConnectionRow, type SlackConnectionData } from "../settings/slack-
 export function SettingsScreen({
   githubConnection,
   slackConnection,
+  linearConnection,
 }: {
   githubConnection: GithubConnectionData;
   slackConnection: SlackConnectionData;
+  linearConnection: LinearConnectionData;
 }) {
   return (
     <div className="qf-page" style={{ maxWidth: 860 }}>
@@ -32,6 +35,11 @@ export function SettingsScreen({
       <Card padding="large">
         <Field label={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Icon name="Bell" size={16} />Slack</span>}>
           <SlackConnectionRow data={slackConnection} githubConnected={githubConnection.connected} />
+        </Field>
+      </Card>
+      <Card padding="large">
+        <Field label={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Icon name="ListChecks" size={16} />Linear</span>}>
+          <LinearConnectionRow data={linearConnection} githubConnected={githubConnection.connected} />
         </Field>
       </Card>
     </div>

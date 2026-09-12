@@ -1,7 +1,8 @@
 import { Icon } from "../icon";
 import { Alert, Badge, Card, Separator } from "../primitives";
 import { ActionRiskBadge, ConfidenceMeter } from "../domain";
-import { ApprovalActions } from "./approval-actions";
+import { ApprovalActions, RetryLinearButton } from "./approval-actions";
+import { linearNoticeForFailure } from "@/lib/linear-api";
 import type { Approval } from "@/db/schema";
 import type { FullRun } from "@/lib/repositories/test-run";
 
@@ -63,6 +64,37 @@ export function ApprovalView({ run, approval }: { run: FullRun; approval: Approv
         />
       ) : null}
       {approval.status === "REJECTED" ? <Alert tone="default" title="Request rejected" description="No issue was created." /> : null}
+      {/* 008-slack-linear-integrations: a distinct notice from GitHub's own Alert above
+          (contracts/action-contract.md) — reads the persisted columns directly, same as
+          githubIssueUrl above, so it reflects reality on every page load, not just the
+          moment after a form submit. Silent (no notice at all) when there's no Linear
+          connection or GitHub is currently suspended (FR-019) — identical to today's
+          pre-Linear behavior, per contracts/action-contract.md's approveApprovalAction table. */}
+      {approval.status === "APPROVED" && approval.linearIssueUrl ? (
+        <Alert
+          tone="success"
+          title="Linear issue created"
+          description="Created alongside the GitHub issue above."
+          actions={
+            <a href={approval.linearIssueUrl} target="_blank" rel="noreferrer" className="text-xs underline">
+              Open in Linear
+            </a>
+          }
+        />
+      ) : null}
+      {approval.status === "APPROVED" && !approval.linearIssueUrl && approval.linearIssueError ? (
+        (() => {
+          const notice = linearNoticeForFailure(approval.linearIssueError as "INVALID_KEY" | "LINEAR_UNREACHABLE");
+          return (
+            <Alert
+              tone="warning"
+              title="Linear issue could not be created"
+              description={notice.message}
+              actions={notice.retryable ? <RetryLinearButton runId={run.id} /> : undefined}
+            />
+          );
+        })()
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 20, alignItems: "start", marginTop: 16 }}>
         <Card padding="none">

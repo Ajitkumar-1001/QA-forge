@@ -216,3 +216,108 @@ test.describe("008-slack-linear-integrations — Slack notification does not alt
     await context.close();
   });
 });
+
+// 008-slack-linear-integrations: quickstart.md Scenarios 6-8. Requires
+// QAFORGE_E2E_FAKE_LINEAR_API and QAFORGE_E2E_FAKE_LINEAR_ISSUE_URL set on the dev server
+// under test (see linear-api.ts).
+const FAKE_LINEAR_ISSUE_URL = process.env.QAFORGE_E2E_FAKE_LINEAR_ISSUE_URL ?? "https://linear.app/qa-forge/issue/ENG-1";
+
+async function connectLinearThroughSettings(page: import("playwright/test").Page) {
+  await page.goto("/settings");
+  await page.locator("#apiKey").fill("lin_fake_key_for_approve_e2e");
+  await page.locator("form").filter({ has: page.locator("#apiKey") }).getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("combobox").click();
+  await page.getByRole("option", { name: "Engineering" }).click();
+  await page.getByRole("button", { name: "Connect" }).click();
+  await expect(page.getByText(/Connected — Engineering/)).toBeVisible();
+}
+
+test.describe("008-slack-linear-integrations — approving creates a Linear issue alongside GitHub's (US2, FR-006/FR-009)", () => {
+  test("connected GitHub + Linear: approve shows both the GitHub link and the Linear link", async ({ browser }) => {
+    const context = await browser.newContext();
+    const { userId } = await signInAs(context, BASE_URL);
+
+    const page = await context.newPage();
+    await page.goto("/settings");
+    await page.locator("#pat").fill("ghp_fake_for_linear_approve_e2e");
+    await page.locator("form").filter({ has: page.locator("#pat") }).getByRole("button", { name: "Connect" }).click();
+    await connectLinearThroughSettings(page);
+
+    const runId = await seedFailedRunWithApproval(userId, "qa-forge/approval-e2e-linear-approve");
+    await page.goto(`/runs/${runId}/approval`);
+    await page.getByRole("button", { name: "Approve & Create" }).click();
+    await page.getByRole("button", { name: "Create Issue" }).click();
+
+    await expect(page.getByRole("link", { name: "Open on GitHub" })).toHaveAttribute("href", FAKE_ISSUE_URL);
+    await expect(page.getByRole("link", { name: "Open in Linear" })).toHaveAttribute("href", FAKE_LINEAR_ISSUE_URL);
+
+    await context.close();
+  });
+
+  // Required, not optional — per this feature's own history, a follow-up PRD review found
+  // this exact race once already after an earlier fix had already "closed" it.
+  test("two concurrent approve attempts for the same decision never produce two Linear issues (US2 AS3, spec.md Acceptance Scenario 3)", async ({ browser }) => {
+    const context = await browser.newContext();
+    const { userId } = await signInAs(context, BASE_URL);
+
+    const page = await context.newPage();
+    await page.goto("/settings");
+    await page.locator("#pat").fill("ghp_fake_for_linear_concurrent_e2e");
+    await page.locator("form").filter({ has: page.locator("#pat") }).getByRole("button", { name: "Connect" }).click();
+    await connectLinearThroughSettings(page);
+
+    const runId = await seedFailedRunWithApproval(userId, "qa-forge/approval-e2e-linear-concurrent");
+
+    // Two browser tabs sharing the same signed-in context, firing the approve request at
+    // effectively the same moment — genuinely concurrent HTTP requests against the real
+    // dev server, not two calls inside one Node process (that's what the unit-level
+    // concurrency test in approval.test.ts already covers).
+    const pageA = await context.newPage();
+    const pageB = await context.newPage();
+    await pageA.goto(`/runs/${runId}/approval`);
+    await pageB.goto(`/runs/${runId}/approval`);
+
+    await Promise.all([
+      pageA.getByRole("button", { name: "Approve & Create" }).click().then(() => pageA.getByRole("button", { name: "Create Issue" }).click()),
+      pageB.getByRole("button", { name: "Approve & Create" }).click().then(() => pageB.getByRole("button", { name: "Create Issue" }).click()),
+    ]);
+
+    await pageA.goto(`/runs/${runId}/approval`);
+    await expect(pageA.getByRole("link", { name: "Open in Linear" })).toHaveAttribute("href", FAKE_LINEAR_ISSUE_URL);
+    // The fake seam always returns the same URL regardless of call count, so this test's
+    // real assertion is at the unit level (approval.test.ts asserts createLinearIssueMock
+    // called exactly once) — this e2e test proves the real HTTP/browser path reaches a
+    // consistent APPROVED-with-one-Linear-link state under real concurrent requests,
+    // which the fake seam alone can't distinguish from "created twice, both return the
+    // same fake URL." Flagged here rather than silently treated as a duplicate-write proof.
+
+    await context.close();
+  });
+
+  test("a Linear failure never touches the GitHub result (US2 AS4)", async ({ browser }) => {
+    const context = await browser.newContext();
+    const { userId } = await signInAs(context, BASE_URL);
+
+    const page = await context.newPage();
+    await page.goto("/settings");
+    await page.locator("#pat").fill("ghp_fake_for_linear_failure_e2e");
+    await page.locator("form").filter({ has: page.locator("#pat") }).getByRole("button", { name: "Connect" }).click();
+    await connectLinearThroughSettings(page);
+
+    const runId = await seedFailedRunWithApproval(userId, "qa-forge/approval-e2e-linear-failure");
+    await page.goto(`/runs/${runId}/approval`);
+    // No QAFORGE_E2E_FAKE_LINEAR_ISSUE_URL override for this one test isn't possible per-test
+    // (it's a dev-server env var, not per-request) — this scenario needs the dev server under
+    // test to NOT set QAFORGE_E2E_FAKE_LINEAR_ISSUE_URL, so createLinearIssue attempts a real
+    // (and here, unreachable/failing) call. Documented as a real environment-shape
+    // requirement, not something this test file can force on its own.
+    await page.getByRole("button", { name: "Approve & Create" }).click();
+    await page.getByRole("button", { name: "Create Issue" }).click();
+
+    await expect(page.getByRole("link", { name: "Open on GitHub" })).toHaveAttribute("href", FAKE_ISSUE_URL);
+    await expect(page.getByText("Approved and created")).toBeVisible();
+    await expect(page.getByText("Linear issue could not be created")).toBeVisible();
+
+    await context.close();
+  });
+});
