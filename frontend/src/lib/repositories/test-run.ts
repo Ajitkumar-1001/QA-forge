@@ -374,6 +374,92 @@ export async function listRunsForCaller(callerId: string): Promise<RunSummary[]>
   return rows;
 }
 
+// A cross-run feed, not a per-run trace (that's run-detail's job) — flattens the
+// modelCalls jsonb column every run already stores (src/mastra/types.ts's ModelCall),
+// no new table. Same ownership join chain as listRunsForCaller.
+export type AgentActivityEntry = {
+  runId: string;
+  objective: string;
+  role: ModelCall["role"];
+  modelId: string;
+  responseId: string;
+  startedAt: Date;
+};
+
+export async function listAgentActivityForCaller(callerId: string): Promise<AgentActivityEntry[]> {
+  const rows = await db
+    .select({
+      runId: testRun.id,
+      objective: testScenario.objective,
+      modelCalls: testRun.modelCalls,
+      startedAt: testRun.startedAt,
+    })
+    .from(testRun)
+    .innerJoin(testScenario, eq(testRun.scenarioId, testScenario.id))
+    .innerJoin(project, eq(testScenario.projectId, project.id))
+    .where(eq(project.userId, callerId))
+    .orderBy(desc(testRun.startedAt));
+
+  return rows.flatMap((row) =>
+    (row.modelCalls as ModelCall[]).map((call) => ({
+      runId: row.runId,
+      objective: row.objective,
+      role: call.role,
+      modelId: call.modelId,
+      responseId: call.responseId,
+      startedAt: row.startedAt,
+    })),
+  );
+}
+
+// Grouped by project (applicationUrl + repository), not a separate table — an Environment
+// here is "an application you've pointed QA runs at", derived from real project rows.
+// No url/credentials/browser/network/policy config: nothing stores those (that richer
+// model is a future, separately-scoped feature, not a rename of this view).
+export type EnvironmentSummary = {
+  projectId: string;
+  applicationUrl: string;
+  repository: string;
+  runCount: number;
+  lastRunStatus: RunStatus;
+  lastRunAt: Date;
+};
+
+export async function listEnvironmentsForCaller(callerId: string): Promise<EnvironmentSummary[]> {
+  const rows = await db
+    .select({
+      projectId: project.id,
+      applicationUrl: project.applicationUrl,
+      repository: project.repository,
+      status: testRun.status,
+      startedAt: testRun.startedAt,
+    })
+    .from(testRun)
+    .innerJoin(testScenario, eq(testRun.scenarioId, testScenario.id))
+    .innerJoin(project, eq(testScenario.projectId, project.id))
+    .where(eq(project.userId, callerId))
+    .orderBy(desc(testRun.startedAt));
+
+  const byProject = new Map<string, EnvironmentSummary>();
+  for (const row of rows) {
+    const existing = byProject.get(row.projectId);
+    if (existing) {
+      existing.runCount += 1;
+    } else {
+      // rows are newest-first, so the first row seen per project is its last run.
+      byProject.set(row.projectId, {
+        projectId: row.projectId,
+        applicationUrl: row.applicationUrl,
+        repository: row.repository,
+        runCount: 1,
+        lastRunStatus: row.status,
+        lastRunAt: row.startedAt,
+      });
+    }
+  }
+  return [...byProject.values()];
+}
+
 /**
  * Real replacement for AppShell's mock sidebar/topbar counts (runs.filter(LIVE_STATUSES)
  * and approvals.filter(PENDING) against src/data/qaforge.ts fixture state). Same raw-SQL

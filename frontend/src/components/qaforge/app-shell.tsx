@@ -9,6 +9,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 const TITLES: Record<string, string> = {
   dashboard: "Overview", runs: "Runs", "new-run": "New QA Run", settings: "Settings", approval: "Approval Draft",
+  "agent-activity": "Agent Activity", environments: "Environments",
 };
 
 function currentScreen(pathname: string): { screen: string; runId?: string } {
@@ -58,9 +59,7 @@ export function AppShell({ children, liveRunCount, pendingApprovalCount, user }:
     <SidebarProvider style={{ "--sidebar-width": "248px", "--sidebar-width-icon": "52px" } as React.CSSProperties}>
       <AppSidebar activeId={activeNav} counts={{ runs: liveRunCount }} user={user} />
       <SidebarInset>
-        {/* onNotifications used to open the deleted /agent-activity mock route — repointed
-            to /runs, the closest real surface pending a real notification-center design. */}
-        <TopBar breadcrumb={crumbs} onSearch={() => setCmdOpen(true)} hasNotifications={liveRunCount + pendingApprovalCount > 0} onNotifications={() => go("runs")} onUser={() => go("settings")} user={user} />
+        <TopBar breadcrumb={crumbs} onSearch={() => setCmdOpen(true)} hasNotifications={liveRunCount + pendingApprovalCount > 0} onNotifications={() => go("agent-activity")} onUser={() => go("settings")} user={user} />
         <div className="flex flex-1 flex-col overflow-auto">{children}</div>
       </SidebarInset>
       {/* extraGroups (a "Recent runs" quick-jump list keyed by the mock's QF-#### id scheme)

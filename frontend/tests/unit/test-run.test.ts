@@ -475,3 +475,117 @@ describe("getShellCountsForCaller — real replacement for AppShell's mock runs/
     expect(await getShellCountsForCaller("user-b")).toEqual({ liveRunCount: 0, pendingApprovalCount: 0 });
   });
 });
+
+describe("listAgentActivityForCaller — cross-run modelCalls flatten, ownership-fixture (SEC-009)", () => {
+  it("a caller with no runs gets an empty feed, not an error", async () => {
+    const { listAgentActivityForCaller } = await import("@/lib/repositories/test-run");
+    expect(await listAgentActivityForCaller("user-b")).toEqual([]);
+  });
+
+  it("flattens modelCalls across runs, newest run first", async () => {
+    const { listAgentActivityForCaller, recordRunResultForCaller } = await import("@/lib/repositories/test-run");
+    const first = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "activity-1" })) as { run: TestRun };
+    await recordRunResultForCaller("user-a", first.run.id, {
+      status: "PASSED",
+      errorReason: null,
+      modelCalls: [{ role: "planner", modelId: "model-1", responseId: "resp-1" }],
+      report: null,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "activity-2" })) as { run: TestRun };
+    await recordRunResultForCaller("user-a", second.run.id, {
+      status: "PASSED",
+      errorReason: null,
+      modelCalls: [
+        { role: "planner", modelId: "model-1", responseId: "resp-2" },
+        { role: "validator", modelId: "model-2", responseId: "resp-3" },
+      ],
+      report: null,
+    });
+
+    const entries = await listAgentActivityForCaller("user-a");
+    expect(entries.map((e) => e.responseId)).toEqual(["resp-2", "resp-3", "resp-1"]);
+    expect(entries[0]).toMatchObject({ runId: second.run.id, objective: "log in", role: "planner", modelId: "model-1" });
+  });
+
+  it("never includes another caller's model calls", async () => {
+    const { listAgentActivityForCaller, recordRunResultForCaller } = await import("@/lib/repositories/test-run");
+    const mine = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "activity-mine" })) as { run: TestRun };
+    await recordRunResultForCaller("user-a", mine.run.id, {
+      status: "PASSED",
+      errorReason: null,
+      modelCalls: [{ role: "planner", modelId: "model-1", responseId: "mine" }],
+      report: null,
+    });
+
+    const [projectB] = await db
+      .insert(schema.project)
+      .values({ id: "project-b-activity", userId: "user-b", applicationUrl: "https://b.example.com", repository: "b/repo" })
+      .returning();
+    const [scenarioB] = await db
+      .insert(schema.testScenario)
+      .values({ id: "scenario-b-activity", projectId: projectB!.id, objective: "b's objective" })
+      .returning();
+    const theirs = (await startRunForCaller("user-b", { scenarioId: scenarioB!.id, idempotencyKey: "activity-theirs" })) as {
+      run: TestRun;
+    };
+    await recordRunResultForCaller("user-b", theirs.run.id, {
+      status: "PASSED",
+      errorReason: null,
+      modelCalls: [{ role: "planner", modelId: "model-1", responseId: "not-mine" }],
+      report: null,
+    });
+
+    const entries = await listAgentActivityForCaller("user-a");
+    expect(entries.map((e) => e.responseId)).toEqual(["mine"]);
+  });
+});
+
+describe("listEnvironmentsForCaller — grouped-by-project rollup, ownership-fixture (SEC-009)", () => {
+  it("a caller with no runs gets an empty list, not an error", async () => {
+    const { listEnvironmentsForCaller } = await import("@/lib/repositories/test-run");
+    expect(await listEnvironmentsForCaller("user-b")).toEqual([]);
+  });
+
+  it("groups runs by project and reports the last run's status/time plus a total count", async () => {
+    const { listEnvironmentsForCaller, recordRunResultForCaller } = await import("@/lib/repositories/test-run");
+    await startRunForCaller("user-a", { scenarioId, idempotencyKey: "env-1" });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = (await startRunForCaller("user-a", { scenarioId, idempotencyKey: "env-2" })) as { run: TestRun };
+    await recordRunResultForCaller("user-a", second.run.id, { status: "FAILED", errorReason: null, modelCalls: [], report: null });
+
+    const environments = await listEnvironmentsForCaller("user-a");
+    // lastRunStatus: "FAILED" (only the second run's status) is itself proof the newest row
+    // won — not comparing lastRunAt against second.run.startedAt, which round-trips through
+    // startRunForCaller's raw-SQL INSERT...RETURNING as a bare (timezone-less) string, unlike
+    // the query-builder SELECT this repository function uses (a pre-existing, unrelated quirk
+    // of rowToTestRun's `as Date` cast — not this function's logic).
+    expect(environments).toHaveLength(1);
+    expect(environments[0]).toMatchObject({
+      projectId: "project-a",
+      applicationUrl: "https://example.com",
+      repository: "owner/repo",
+      runCount: 2,
+      lastRunStatus: "FAILED",
+    });
+    expect(environments[0]!.lastRunAt).toBeInstanceOf(Date);
+  });
+
+  it("never includes another caller's projects", async () => {
+    const { listEnvironmentsForCaller } = await import("@/lib/repositories/test-run");
+    await startRunForCaller("user-a", { scenarioId, idempotencyKey: "env-mine" });
+
+    const [projectB] = await db
+      .insert(schema.project)
+      .values({ id: "project-b-env", userId: "user-b", applicationUrl: "https://b.example.com", repository: "b/repo" })
+      .returning();
+    const [scenarioB] = await db
+      .insert(schema.testScenario)
+      .values({ id: "scenario-b-env", projectId: projectB!.id, objective: "b's objective" })
+      .returning();
+    await startRunForCaller("user-b", { scenarioId: scenarioB!.id, idempotencyKey: "env-theirs" });
+
+    const environments = await listEnvironmentsForCaller("user-a");
+    expect(environments.map((e) => e.projectId)).toEqual(["project-a"]);
+  });
+});

@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { Badge, Button } from "../primitives";
 import { Field, Input } from "../forms";
+import { GithubGateNotice } from "./github-gate-notice";
 import { connectSlackAction, disconnectSlackAction, type ConnectSlackState } from "@/app/settings/actions";
 
 export type SlackConnectionData = { connected: false } | { connected: true };
@@ -32,14 +33,7 @@ export function SlackConnectionRow({ data, githubConnected }: { data: SlackConne
   }
 
   if (!githubConnected) {
-    // FR-017: "state, don't hide" — matches GithubConnectionRow's own connected/disconnected
-    // states, so a gated row is visibly gated, not silently absent.
-    return (
-      <div className="flex w-full flex-col gap-1">
-        <Badge tone="neutral" icon="Lock">Requires GitHub</Badge>
-        <span className="text-xs text-muted-foreground">Connect GitHub first — Slack and Linear both require it.</span>
-      </div>
-    );
+    return <GithubGateNotice />;
   }
 
   return (

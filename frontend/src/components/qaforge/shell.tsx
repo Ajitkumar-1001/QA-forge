@@ -26,15 +26,20 @@ import {
 export interface SidebarNavItem { id: string; label: string; icon?: string; href: string; count?: number }
 export interface SidebarNavGroup { label?: string; items: SidebarNavItem[] }
 
-// Test Plans, Findings, Repositories, Environments, Agent Activity, Policies removed:
-// no PRD backing / no DB table, or a duplicate of a real surface wired elsewhere
-// (Repositories duplicated /settings, Agent Activity duplicated run-detail's Agent Trace).
+// Test Plans, Findings, Repositories, Policies removed: no PRD backing / no DB table,
+// or a duplicate of a real surface wired elsewhere (Repositories duplicated /settings).
+// Agent Activity and Environments (added back) are real, derived views — no new tables:
+// Agent Activity flattens the modelCalls every run already stores; Environments groups
+// existing project rows (applicationUrl + repository). Neither duplicates run-detail's
+// per-run Agent Trace or the Runs list — both are cross-run/cross-project rollups.
 export const APP_NAV: SidebarNavGroup[] = [
   { items: [{ id: "dashboard", label: "Overview", icon: "LayoutDashboard", href: "/dashboard" }] },
   { label: "Runs", items: [
     { id: "runs", label: "Runs", icon: "Play", href: "/runs" },
+    { id: "agent-activity", label: "Agent Activity", icon: "Activity", href: "/agent-activity" },
   ] },
   { label: "System", items: [
+    { id: "environments", label: "Environments", icon: "Globe", href: "/environments" },
     { id: "settings", label: "Settings", icon: "Settings", href: "/settings" },
   ] },
 ];
@@ -170,6 +175,8 @@ export function commandGroups(): CommandGroup[] {
     ] },
     { heading: "Go to", items: [
       { id: "runs", label: "Go to Runs", icon: "ListChecks", shortcut: ["G", "R"] },
+      { id: "agent-activity", label: "Go to Agent Activity", icon: "Activity" },
+      { id: "environments", label: "Go to Environments", icon: "Globe" },
       { id: "settings", label: "Open Settings", icon: "Settings", shortcut: ["G", "S"] },
     ] },
   ];

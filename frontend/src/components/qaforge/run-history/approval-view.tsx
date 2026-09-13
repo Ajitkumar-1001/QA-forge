@@ -36,6 +36,13 @@ export function ApprovalView({ run, approval }: { run: FullRun; approval: Approv
   const winningHypothesis = run.report?.winningHypothesisId
     ? run.hypotheses.find((h) => h.id === run.report!.winningHypothesisId)
     : undefined;
+  // 008-slack-linear-integrations: precomputed alongside the other derived values above,
+  // not an inline IIFE in the JSX below — only meaningful when APPROVED with a failed (not
+  // yet succeeded) Linear write.
+  const linearFailureNotice =
+    approval.status === "APPROVED" && !approval.linearIssueUrl && approval.linearIssueError
+      ? linearNoticeForFailure(approval.linearIssueError as "INVALID_KEY" | "LINEAR_UNREACHABLE")
+      : null;
 
   return (
     <div style={{ maxWidth: 1180 }}>
@@ -82,18 +89,13 @@ export function ApprovalView({ run, approval }: { run: FullRun; approval: Approv
           }
         />
       ) : null}
-      {approval.status === "APPROVED" && !approval.linearIssueUrl && approval.linearIssueError ? (
-        (() => {
-          const notice = linearNoticeForFailure(approval.linearIssueError as "INVALID_KEY" | "LINEAR_UNREACHABLE");
-          return (
-            <Alert
-              tone="warning"
-              title="Linear issue could not be created"
-              description={notice.message}
-              actions={notice.retryable ? <RetryLinearButton runId={run.id} /> : undefined}
-            />
-          );
-        })()
+      {linearFailureNotice ? (
+        <Alert
+          tone="warning"
+          title="Linear issue could not be created"
+          description={linearFailureNotice.message}
+          actions={linearFailureNotice.retryable ? <RetryLinearButton runId={run.id} /> : undefined}
+        />
       ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 20, alignItems: "start", marginTop: 16 }}>

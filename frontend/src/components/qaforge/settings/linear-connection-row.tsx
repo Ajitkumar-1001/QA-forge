@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { Badge, Button } from "../primitives";
 import { Field, Input, Select } from "../forms";
+import { GithubGateNotice } from "./github-gate-notice";
 import {
   listLinearTeamsAction,
   connectLinearAction,
@@ -47,12 +48,7 @@ export function LinearConnectionRow({ data, githubConnected }: { data: LinearCon
   }
 
   if (!githubConnected) {
-    return (
-      <div className="flex w-full flex-col gap-1">
-        <Badge tone="neutral" icon="Lock">Requires GitHub</Badge>
-        <span className="text-xs text-muted-foreground">Connect GitHub first — Slack and Linear both require it.</span>
-      </div>
-    );
+    return <GithubGateNotice />;
   }
 
   if (teamsState.teams) {

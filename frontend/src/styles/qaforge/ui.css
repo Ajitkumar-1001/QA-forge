@@ -375,3 +375,66 @@
 .qf-tertiary{color:var(--text-tertiary)}
 .qf-label-caps{font-size:var(--text-micro-size);font-weight:500;letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-tertiary)}
 .qf-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* 008-slack-linear-integrations design-sync: additive only — primitives the design system
+   defines that no component in this app renders yet (confirmed via grep across
+   src/components/qaforge/ before adding). Not wired to anything; here so the definition
+   exists once a future component needs Accordion/Collapsible/Drawer/Dropdown/Hovercard/
+   Popover/Tooltip, instead of being silently absent from the design system file. Deliberately
+   NOT touching the existing Checkbox/Radio/Switch/Tabs/Select-popup rules above — those use
+   Base UI's data-* state attributes, a newer convention than this same design source's own
+   aria-*/input-sibling versions for the same components; overwriting them would be a real
+   regression risk with no compensating benefit, since nothing here is actually stale for
+   what's currently rendered. */
+.qf-accordion{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-2)}
+.qf-accordion__item+.qf-accordion__item{border-top:1px solid var(--border-subtle)}
+.qf-accordion__trigger{all:unset;display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;box-sizing:border-box;padding:12px 16px;font-size:var(--text-body-size);font-weight:500;color:var(--text-primary);cursor:pointer}
+.qf-accordion__trigger:hover{background:var(--hover-overlay)}
+.qf-accordion__trigger:focus-visible{outline:var(--focus-ring);outline-offset:-2px}
+.qf-accordion__chevron{color:var(--text-tertiary);transition:transform var(--duration-base) var(--ease-standard)}
+.qf-accordion__trigger[aria-expanded="true"] .qf-accordion__chevron{transform:rotate(180deg)}
+.qf-accordion__content{padding:0 16px 14px;font-size:var(--text-body-size);color:var(--text-secondary);line-height:1.5;animation:qf-fade-in var(--duration-base) var(--ease-out)}
+.qf-collapsible{display:flex;flex-direction:column}
+.qf-collapsible__trigger{all:unset;display:inline-flex;align-items:center;gap:6px;font-size:var(--text-small-size);font-weight:500;color:var(--text-secondary);cursor:pointer;padding:4px 0}
+.qf-collapsible__trigger:hover{color:var(--text-primary)}
+.qf-collapsible__trigger:focus-visible{outline:var(--focus-ring);outline-offset:2px;border-radius:2px}
+.qf-collapsible__chevron{color:var(--text-tertiary);transition:transform var(--duration-base) var(--ease-standard)}
+.qf-collapsible__trigger[aria-expanded="true"] .qf-collapsible__chevron{transform:rotate(90deg)}
+.qf-collapsible__content{animation:qf-fade-in var(--duration-base) var(--ease-out)}
+.qf-alert-dialog .qf-dialog__title{display:flex;align-items:center;gap:8px}
+.qf-drawer{position:fixed;z-index:51;left:0;right:0;bottom:0;max-height:85%;display:flex;flex-direction:column;background:var(--surface-elevated);border-top:1px solid var(--border);border-radius:var(--radius-lg) var(--radius-lg) 0 0;box-shadow:var(--shadow-dialog);animation:qf-slide-in-bottom var(--duration-slow) var(--ease-out)}
+.qf-drawer--inline{position:absolute}
+.qf-drawer__grabber{width:36px;height:4px;border-radius:2px;background:var(--border-strong);margin:8px auto 0}
+.qf-drawer__header{padding:12px 20px 0;display:flex;flex-direction:column;gap:4px}
+.qf-drawer__title{margin:0;font-size:var(--text-h3-size);font-weight:600}
+.qf-drawer__description{margin:0;font-size:var(--text-small-size);color:var(--text-secondary)}
+.qf-drawer__body{padding:16px 20px;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.qf-drawer__footer{display:flex;gap:8px;padding:12px 20px 16px;border-top:1px solid var(--border-subtle)}
+.qf-drawer__footer>.qf-btn{flex:1}
+.qf-context{position:relative}
+.qf-dropdown{position:relative;display:inline-flex}
+.qf-dropdown .qf-menu{position:absolute;z-index:45;top:calc(100% + 4px);left:0}
+.qf-dropdown--end .qf-menu{left:auto;right:0}
+.qf-menu--floating{position:absolute;z-index:45}
+.qf-menu__label{padding:6px 8px 4px;font-size:var(--text-micro-size);font-weight:500;text-transform:uppercase;letter-spacing:var(--tracking-label);color:var(--text-tertiary)}
+.qf-menu__shortcut{margin-left:auto;color:var(--text-tertiary);font-size:var(--text-caption-size);font-family:var(--font-mono)}
+.qf-menu__check{width:16px;display:inline-flex;justify-content:center;color:var(--text-secondary)}
+.qf-hovercard{width:280px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.qf-popover-anchor{position:relative;display:inline-flex}
+.qf-popover{position:absolute;z-index:40;min-width:200px;padding:12px;background:var(--popover);color:var(--popover-foreground);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-popover);font-size:var(--text-body-size);animation:qf-scale-in var(--duration-fast) var(--ease-out)}
+.qf-popover--bottom{top:calc(100% + 6px);left:0}
+.qf-popover--bottom-end{top:calc(100% + 6px);right:0}
+.qf-popover--top{bottom:calc(100% + 6px);left:0}
+.qf-popover--top-end{bottom:calc(100% + 6px);right:0}
+.qf-popover--right{left:calc(100% + 6px);top:0}
+.qf-popover--left{right:calc(100% + 6px);top:0}
+.qf-tooltip-anchor{position:relative;display:inline-flex}
+.qf-tooltip{position:absolute;z-index:60;padding:4px 8px;background:var(--surface-elevated);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:var(--text-caption-size);line-height:1.4;white-space:nowrap;box-shadow:var(--shadow-sm);pointer-events:none;animation:qf-fade-in var(--duration-fast) var(--ease-out)}
+.qf-tooltip--top{bottom:calc(100% + 6px);left:50%;transform:translateX(-50%)}
+.qf-tooltip--bottom{top:calc(100% + 6px);left:50%;transform:translateX(-50%)}
+.qf-tooltip--right{left:calc(100% + 6px);top:50%;transform:translateY(-50%)}
+.qf-tooltip--left{right:calc(100% + 6px);top:50%;transform:translateY(-50%)}
+.qf-tooltip .qf-kbd{margin-left:6px;height:16px;min-width:16px;font-size:10px;background:var(--surface-3)}
+.qf-scroll-area{position:relative;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent}
+.qf-scroll-area--bordered{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-1)}
+.qf-progress--segmented{background:repeating-linear-gradient(90deg,var(--surface-3) 0 calc(100% / var(--segments,10) - 2px),var(--background) calc(100% / var(--segments,10) - 2px) calc(100% / var(--segments,10)))}
